@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  role      String
+  createdAt DateTime @default(now())
+}
+
+model RadioPerCity{
+    id Int @id @default(autoincrement())
+    city String 
+    radio String
+}
+
+model Team {
+  id                 Int       @id @default(autoincrement())
+  city               String
+  station            String
+  leadName           String
+  teamName           String
+  dateofCreation     DateTime  @default(now())
+  pendingtask        Int       @default(0)
+  completedtask      Int       @default(0)
+  totalassignedtask  Int       @default(0)
+  members            Member[]  
+}
+
+model Member {
+  id       Int    @id @default(autoincrement())
+  name     String
+  teamId   Int
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
