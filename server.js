@@ -1,5 +1,5 @@
 import { prisma } from './client/PrismaClients.js';
-import { redis } from './client/redisClient.js';
+import { redis } from './client/RedisClient.js';
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
