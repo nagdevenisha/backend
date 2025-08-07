@@ -16,19 +16,21 @@ const JWT_SECRET = process.env.JWT_SECRET;
 app.post("/app/register", async (req, res) => {
   console.log(req.body);
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role ,fullname } = req.body;
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { username, password: hashedPassword, role },
+      data: { username, password: hashedPassword, role ,fullname },
     });
      await redis.hset(
       `user:${username}`,
       "password",
       hashedPassword,
       "role",
-      role
+      role,
+      "fullname",
+      fullname
     );
      res.status(200).json({ message: "Registration Successful" });
   } catch (err) {
@@ -36,6 +38,20 @@ app.post("/app/register", async (req, res) => {
   }
 });
 
+app.get('/app/login',async(req,res)=>{
+  try{
+         const {username}=req.query;
+         const user=await prisma.user.findUnique({select:{fullname:true},where:{username:username}});
+         console.log(user);
+         
+         return res.json({user});
+  }catch(err)
+  {
+    console.log(err);
+    
+  }
+
+})
 app.post('/app/login',async(req,res)=>{
   try {
     const { username, password } = req.body;
@@ -145,6 +161,100 @@ app.get('/app/station',async(req,res)=>{
   }
 })
 
+app.get('/app/getmembers',async(req,res)=>{
+     try {
+    const cachedMembers = await redis.get("members");
+    if (cachedMembers) {
+      console.log("from cache");
+      return res.json(JSON.parse(cachedMembers));
+    }
+    const users = await prisma.user.findMany({
+      select: { fullname: true }, 
+    });
+    console.log(users);
+    const members = users.map((u) => u.fullname);
+    await redis.set("members", JSON.stringify(members), "EX", 600); 
+    res.json(members);
+  } catch (err) {
+    console.error("❌ Error fetching members:", err);
+    res.status(500).json({ error: "Failed to fetch members" });
+  }
+});
+
+
+
+app.post('/app/saveteam',async(req,res)=>{
+    try{
+          const{teamName,leadName,station,city,members}=req.body;
+  console.log(req.body);
+   const memberNames = members.map((m) => m.value);
+   console.log(memberNames);
+  
+    // Step 1: Save to DB
+    const newTeam = await prisma.team.create({
+      data: {
+        teamName,
+        leadName,
+        station,
+        city,
+        members: {
+          create: memberNames.map((name) => ({ name })),
+        },
+      },
+      include: { members: true },
+    });
+
+    // Step 2: Save team in Redis
+    const keyType = await redis.type(`teams:${newTeam.city}`);
+    if (keyType !== 'list') {
+      await redis.del(`teams:${newTeam.city}`);
+    }
+    await redis.rpush(`teams:${newTeam.city}`, JSON.stringify(newTeam));
+    // Step 3: Update teams list cache
+    const allTeams = await prisma.team.findMany({ include: { members: true } });
+    await redis.set("teams", JSON.stringify(allTeams), "EX", 60 * 10);
+
+    res.status(201).json({ message: "Team saved successfully", team: newTeam });
+  } catch (err) {
+    console.error("❌ Error saving team:", err);
+    res.status(500).json({ error: "Failed to save team" });
+  }
+})
+
+app.get('/app/teamspercity',async(req,res)=>{
+    const{city}=req.query;
+    console.log('city received:', city);
+
+   try{
+         const redisKey = `teams:${city}`;
+
+    // 1. Check Redis
+    const cachedData = await redis.lrange(redisKey, 0, -1);
+    if (cachedData.length > 0) {
+        const teams = cachedData.map(item => JSON.parse(item));
+        return res.json(teams);
+      }
+    
+    console.log("❌ Cache miss, fetching from DB");
+
+    // 2. Fetch from DB
+    const teams = await prisma.team.findMany({
+      where: { city:city },
+      include: { members: true }, // if you want members too
+    });
+    console.log(teams);
+    // 3. Store in Redis (expire after 10 minutes)
+    for (const team of teams) {
+        await redis.rpush(redisKey, JSON.stringify(team));
+    }
+      await redis.expire(redisKey, 3600);
+      res.json(teams);
+   }
+   catch(err)
+   {
+     console.log(err)
+   }
+})
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 
