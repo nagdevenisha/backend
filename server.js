@@ -10,6 +10,7 @@ dotenv.config();
 
 const app=express();
 app.use(express.json());
+// app.use(cors());
 app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -255,6 +256,111 @@ app.get('/app/teamspercity',async(req,res)=>{
      console.log(err)
    }
 })
+
+app.post('/app/tasks',async(req,res)=>{
+
+  const{city,station,leadName,teamName,tasks}=req.body;
+  console.log(tasks);
+  try
+  {
+    const team = await prisma.team.findFirst({
+    where: {
+      city,
+      station,
+      leadName,
+      teamName
+    }
+  });
+  await prisma.team.update({
+  where: { id: team.id },
+  data: {
+    totalassignedtask: { increment: 1 }
+  }
+  });
+
+  // 2️⃣ Find the member in that team
+  const member = await prisma.member.findFirst({
+    where: {
+      teamId: team.id,
+      name: tasks.assignto
+    }
+  });
+
+  // 3️⃣ Create the task for that member & team
+  const task = await prisma.task.create({
+    data: {
+      instructions:tasks.instructions,
+      assignto:tasks.assignto,
+      audio: Array.isArray(tasks.audio[0]) ? tasks.audio[0] : tasks.audio, 
+      teamId: team.id,
+      memberId: member.id,
+    }
+  });
+  const today = new Date();
+  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+
+  await prisma.teamDailyStats.upsert({
+    where: { teamId_date: { teamId: team.id, date: startOfDay } },
+    update: { assigned: { increment: 1 } },
+    create: { teamId: team.id, date: startOfDay, assigned: 1 }
+  });
+
+  if(task)
+  {
+     const tasks = await prisma.task.findMany({
+        include: {
+          team: true,   // fetch all team fields
+          member: true, // fetch all member fields
+        }
+      });
+
+     res.status(200).json(tasks);
+  }
+  }
+  catch(err)
+  {
+     console.log(err);
+  }
+
+})
+
+app.post('/app/gettasks', async (req, res) => {
+  const { city, station, leadName, teamName } = req.body;
+
+  try {
+    // 1️⃣ Find the team matching the details
+    const team = await prisma.team.findFirst({
+      where: {
+        city,
+        station,
+        leadName,
+        teamName
+      }
+    });
+
+    if (!team) {
+      return res.status(404).json({ message: "Team not found" });
+    }
+
+    // 2️⃣ Fetch only tasks for this team
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        teamId: team.id
+      },
+      include: {
+        team: true,
+        member: true
+      }
+    });
+
+    res.json(tasks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching tasks" });
+  }
+});
+
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 

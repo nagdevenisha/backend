@@ -40,6 +40,8 @@ model Team {
   completedtask      Int       @default(0)
   totalassignedtask  Int       @default(0)
   members            Member[]  
+  tasks              Task[]
+  teamDailyStats     TeamDailyStats[]
 }
 
 model Member {
@@ -47,4 +49,28 @@ model Member {
   name     String
   teamId   Int
   team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+}
+
+model Task {
+  id           Int      @id @default(autoincrement())
+  assignto     String
+  audio        String[]
+  instructions String?
+  status       String   @default("pending") // could be pending, completed, etc.
+  createdAt    DateTime @default(now())
+  teamId       Int
+  team         Team     @relation(fields: [teamId], references: [id])
+  memberId     Int
+  member       Member   @relation(fields: [memberId], references: [id])
+}
+
+model TeamDailyStats {
+  id         Int      @id @default(autoincrement())
+  team       Team     @relation(fields: [teamId], references: [id])
+  teamId     Int
+  date       DateTime
+  assigned   Int      @default(0)
+
+  @@unique([teamId, date])
 }
