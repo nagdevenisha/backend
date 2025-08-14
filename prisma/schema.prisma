@@ -23,33 +23,33 @@ model User {
   createdAt DateTime @default(now())
 }
 
-model RadioPerCity{
-    id Int @id @default(autoincrement())
-    city String 
-    radio String
+model RadioPerCity {
+  id    Int    @id @default(autoincrement())
+  city  String
+  radio String
 }
 
 model Team {
-  id                 Int       @id @default(autoincrement())
-  city               String
-  station            String
-  leadName           String
-  teamName           String
-  dateofCreation     DateTime  @default(now())
-  pendingtask        Int       @default(0)
-  completedtask      Int       @default(0)
-  totalassignedtask  Int       @default(0)
-  members            Member[]  
-  tasks              Task[]
-  teamDailyStats     TeamDailyStats[]
+  id                Int              @id @default(autoincrement())
+  city              String
+  station           String
+  leadName          String
+  teamName          String
+  dateofCreation    DateTime         @default(now())
+  pendingtask       Int              @default(0)
+  completedtask     Int              @default(0)
+  totalassignedtask Int              @default(0)
+  members           Member[]
+  tasks             Task[]
+  teamDailyStats    TeamDailyStats[]
 }
 
 model Member {
-  id       Int    @id @default(autoincrement())
-  name     String
-  teamId   Int
-  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  tasks    Task[]
+  id     Int    @id @default(autoincrement())
+  name   String
+  teamId Int
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  tasks  Task[]
 }
 
 model Task {
@@ -66,11 +66,11 @@ model Task {
 }
 
 model TeamDailyStats {
-  id         Int      @id @default(autoincrement())
-  team       Team     @relation(fields: [teamId], references: [id])
-  teamId     Int
-  date       DateTime
-  assigned   Int      @default(0)
+  id       Int      @id @default(autoincrement())
+  team     Team     @relation(fields: [teamId], references: [id])
+  teamId   Int
+  date     DateTime
+  assigned Int      @default(0)
 
   @@unique([teamId, date])
 }
