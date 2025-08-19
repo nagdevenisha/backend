@@ -1,18 +1,32 @@
 import { prisma } from './client/PrismaClients.js';
 import { redis } from './client/RedisClient.js';
 import express from "express";
+import { execFile } from 'child_process';
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cors from 'cors';
 import dotenv from 'dotenv';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from "url";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+
+
 
 dotenv.config();
 
 const app=express();
 app.use(express.json());
-// app.use(cors());
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+app.use(cors());
+// app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+const BASE_URL = "http://localhost:3001"; 
 const JWT_SECRET = process.env.JWT_SECRET;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.post("/app/register", async (req, res) => {
   console.log(req.body);
@@ -361,6 +375,217 @@ app.post('/app/gettasks', async (req, res) => {
   }
 });
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(process.cwd(), "uploads"));
+  },
+  filename: (req, file, cb) => {
+    // Keep original extension
+    const ext = path.extname(file.originalname);
+    const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9) + ext;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ storage });
+app.post("/api/master/upload", upload.single("masterFile"), (req, res) => {
+
+   const{type}= req.body;
+     const filePath = path.join(__dirname, "uploads", req.file.filename);
+  const fpcalcPath = path.join(__dirname,'Server',"tools", "fpcalc.exe");
+
+  execFile(fpcalcPath, ["-json", filePath], async(err, stdout, stderr) => {
+    if (err) {
+      console.error("❌ Error:", err);
+      return res.status(500).json({ success: false, error: stderr || err.message });
+    }
+
+     let fpData;
+    try {
+      fpData = JSON.parse(stdout); // parse fpcalc output
+    } catch (e) {
+      return res.status(500).json({ success: false, error: "Invalid fpcalc output" });
+    }
+
+    const { duration, fingerprint } = fpData;
+    const record = await prisma.audioFingerprint.create({
+    data: {
+      fileName: req.file.originalname,
+      filePath: `${BASE_URL}/uploads/${req.file.filename}`,
+      duration: duration,
+      fingerprint: fingerprint,
+    },
+  });
+   const targetFolder =
+        type === "master"
+          ? "C:\\AFT\\Master_Audio"
+          : path.join(__dirname, "Recording_Audio");
+
+      if (!fs.existsSync(targetFolder)) fs.mkdirSync(targetFolder, { recursive: true });
+
+      const fpFilePath = path.join(
+        targetFolder,
+        path.parse(req.file.originalname).name + ".fp"
+      );
+
+      fs.writeFileSync(fpFilePath, fingerprint);
+
+      console.log(`✅ .fp saved to ${fpFilePath}`);
+
+
+    res.json({
+      success: true,
+      file: req.file.originalname,
+      savedAs: filePath,
+      fingerprint: stdout.trim(), // JSON fingerprint from fpcalc
+    });
+  });
+});
+
+app.post("/upload", upload.single("file"), async (req, res) => {
+  try {
+    console.log(req.file);
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    const filePath = path.join(__dirname,"uploads", req.file.filename);
+   const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+
+    const recordingAudioDir = path.join(__dirname, "Recording_Audio");
+
+    // Make sure Recording_Audio folder exists
+    if (!fs.existsSync(recordingAudioDir)) {
+      fs.mkdirSync(recordingAudioDir);
+    }
+
+    execFile(fpcalcPath, ["-json", filePath], async (error, stdout, stderr) => {
+      if (error) {
+        console.error(`❌ Script error: ${error.message}`);
+        return res.status(500).json({ error: "Fingerprinting failed" });
+      }
+
+      console.log(`✅ Script output: ${stdout}`);
+
+      let fpData;
+      try {
+        fpData = JSON.parse(stdout); // parse fpcalc output
+      } catch (e) {
+        return res
+          .status(500)
+          .json({ success: false, error: "Invalid fpcalc output" });
+      }
+
+      const { duration, fingerprint } = fpData;
+       const fpFileName = req.file.originalname + ".fp";
+      const fpFilePath = path.join(recordingAudioDir, fpFileName);
+      fs.writeFileSync(fpFilePath, fingerprint);
+
+      try {
+        const record = await prisma.recording.create({
+          data: {
+            fileName: req.file.originalname,
+            filePath: `${BASE_URL}/uploads/${req.file.filename}`,
+            duration: duration,
+            fingerprint: fingerprint,
+          },
+        });
+
+        res.json(record); // ✅ send response only after saving
+      } catch (dbErr) {
+        console.error("DB save error:", dbErr);
+        res.status(500).json({ error: "Failed to save recording in DB" });
+      }
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: "Failed to upload recording" });
+  }
+});
+
+app.post('/audiomatching',async(req,res)=>{
+try {
+    const scriptsDir = path.join(process.cwd(), "server", "scripts");
+
+    // 1. Batch identify all .fp recordings
+    await new Promise((resolve, reject) => {
+      execFile(path.join(scriptsDir, "5_AFT_Batch_Identify_All.bat"), [], (err) => {
+        if (err) return reject(err);
+        console.log("✅ Batch identification done");
+        resolve();
+      });
+    });
+
+    // 2. Parse logs → CSV
+    await new Promise((resolve, reject) => {
+      execFile("powershell.exe", [
+        "-ExecutionPolicy", "Bypass",
+        "-File", path.join(scriptsDir, "6_Parse_Match_Logs_to_CSV.ps1")
+      ], (err) => {
+        if (err) return reject(err);
+        console.log("✅ CSV generated from logs");
+        resolve();
+      });
+    });
+
+    // 3. Read CSV into JSON
+    const csvPath = path.join(scriptsDir, "results", "matches.csv");
+    const records = [];
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(csvPath)
+        .pipe(csvParser())
+        .on("data", (row) => records.push(row))
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    // 4. Save JSON in DB
+    const saved = await prisma.matchResult.create({
+      data: { jsonData: records }
+    });
+
+    // 5. Send JSON to frontend
+    res.json({
+      message: "✅ Matching complete",
+      matchId: saved.id,
+      results: records
+    });
+
+  } catch (err) {
+    console.error("❌ Match flow error:", err);
+    res.status(500).json({ error: err.message });
+  }
+}
+)
+
+app.get("/clip", (req, res) => {
+  let { filePath, startTime, endTime } = req.query;
+
+  console.log(filePath,startTime,endTime)
+  // Convert times to seconds if needed
+   if (filePath.startsWith("http")) {
+    filePath = filePath.split("/uploads/")[1]; // "1755596284376-639066989.mp3"
+  }
+
+  const resolvedPath = path.join(__dirname, "uploads", filePath);
+
+  // Calculate duration
+  const [sh, sm, ss] = startTime.split(":").map(Number);
+  const [eh, em, es] = endTime.split(":").map(Number);
+  const startSeconds = sh * 3600 + sm * 60 + ss;
+  const endSeconds = eh * 3600 + em * 60 + es;
+  const duration = endSeconds - startSeconds;
+
+  ffmpeg(resolvedPath)
+    .setStartTime(startTime)
+    .setDuration(duration)
+    .format("mp3")
+    .on("error", (err) => {
+      console.error("FFmpeg error:", err.message);
+      res.status(500).send("Error processing audio");
+    })
+    .pipe(res, { end: true });
+
+  });
+  
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 

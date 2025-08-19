@@ -74,3 +74,24 @@ model TeamDailyStats {
 
   @@unique([teamId, date])
 }
+model AudioFingerprint {
+  id          Int      @id @default(autoincrement())
+  fileName    String
+  filePath    String
+  duration    Float
+  fingerprint String
+  createdAt   DateTime @default(now())
+}
+model Recording {
+  id          Int     @id @default(autoincrement())
+  fileName    String   // camelCase
+  filePath    String
+  duration    Int
+  fingerprint String
+}
+model MatchResult {
+  id         Int      @id @default(autoincrement())
+  recordingId Int?    // optional link to uploaded recording
+  jsonData   Json
+  createdAt  DateTime @default(now())
+}
