@@ -12,6 +12,7 @@ import fs from 'fs';
 import { fileURLToPath } from "url";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import clipAudio from './Server/clipAudio.js'
 
 
 
@@ -19,9 +20,9 @@ dotenv.config();
 
 const app=express();
 app.use(express.json());
-// app.use(cors());
+//  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
-// const BASE_URL = "http://localhost:3001"; 
+//  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
 const __filename = fileURLToPath(import.meta.url);
@@ -380,44 +381,48 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, path.join(process.cwd(), "uploads"));
   },
-  filename: (req, file, cb) => {
-    // Keep original extension
-    const ext = path.extname(file.originalname);
-    const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9) + ext;
-    cb(null, uniqueName);
-  }
+  filename: function (req, file, cb) {
+    cb(null, file.originalname); // ✅ keep original filename
+  },
 });
 
 const upload = multer({ storage });
-app.post("/api/master/upload", upload.single("masterFile"), (req, res) => {
+app.post("/api/master/upload", upload.array("masterFiles"), async (req, res) => {
+  const { type } = req.body;
 
-   const{type}= req.body;
-     const filePath = path.join(__dirname, "uploads", req.file.filename);
-  const fpcalcPath = path.join(__dirname,'Server',"tools", "fpcalc.exe");
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ success: false, error: "No files uploaded" });
+  }
 
-  execFile(fpcalcPath, ["-json", filePath], async(err, stdout, stderr) => {
-    if (err) {
-      console.error("❌ Error:", err);
-      return res.status(500).json({ success: false, error: stderr || err.message });
-    }
+  let results = [];
 
-     let fpData;
+  for (const file of req.files) {
+    const filePath = path.join(__dirname, "uploads", file.filename);
+    const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+
     try {
-      fpData = JSON.parse(stdout); // parse fpcalc output
-    } catch (e) {
-      return res.status(500).json({ success: false, error: "Invalid fpcalc output" });
-    }
+      const { stdout } = await new Promise((resolve, reject) => {
+        execFile(fpcalcPath, ["-json", filePath], (err, stdout, stderr) => {
+          if (err) return reject(err);
+          resolve({ stdout });
+        });
+      });
 
-    const { duration, fingerprint } = fpData;
-    const record = await prisma.audioFingerprint.create({
-    data: {
-      fileName: req.file.originalname,
-      filePath: `${BASE_URL}/uploads/${req.file.filename}`,
-      duration: duration,
-      fingerprint: fingerprint,
-    },
-  });
-   const targetFolder =
+      let fpData = JSON.parse(stdout);
+      const { duration, fingerprint } = fpData;
+
+      // Save in DB
+      const record = await prisma.audioFingerprint.create({
+        data: {
+          fileName: file.originalname,
+          filePath: `${BASE_URL}/uploads/${file.filename}`,
+          duration,
+          fingerprint,
+        },
+      });
+
+      // Save .fp file
+      const targetFolder =
         type === "master"
           ? "C:\\AFT\\Master_Audio"
           : path.join(__dirname, "Recording_Audio");
@@ -426,81 +431,134 @@ app.post("/api/master/upload", upload.single("masterFile"), (req, res) => {
 
       const fpFilePath = path.join(
         targetFolder,
-        path.parse(req.file.originalname).name + ".fp"
+        path.parse(file.originalname).name + ".fp"
       );
 
       fs.writeFileSync(fpFilePath, fingerprint);
 
       console.log(`✅ .fp saved to ${fpFilePath}`);
 
+      results.push({
+        file: file.originalname,
+        savedAs: filePath,
+        fingerprint: fpData,
+      });
+    } catch (e) {
+      console.error("❌ Error processing file:", file.originalname, e);
+      results.push({
+        file: file.originalname,
+        error: e.message,
+      });
+    }
+  }
 
-    res.json({
-      success: true,
-      file: req.file.originalname,
-      savedAs: filePath,
-      fingerprint: stdout.trim(), // JSON fingerprint from fpcalc
-    });
+  res.json({
+    success: true,
+    files: results,
   });
 });
 
-app.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    console.log(req.file);
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+function waitForFile(filePath, timeoutMs = 30 * 60 * 1000) { // 30 min max
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      if (fs.existsSync(filePath)) {
+        clearInterval(interval);
+        resolve(true);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        reject(new Error("Timeout waiting for metadata.json"));
+      }
+    }, 5000); // check every 5 seconds
+  });
+}
+app.post("/upload", upload.array("files"), async (req, res) => {
+  console.log("Uploaded files:", req.files);
 
-    const filePath = path.join(__dirname,"uploads", req.file.filename);
-   const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+  const scriptPath = path.resolve(__dirname, "Server/checkAudioFiles.js");
+  const uploadsDir = path.join(__dirname, "uploads");
 
-    const recordingAudioDir = path.join(__dirname, "Recording_Audio");
-
-    // Make sure Recording_Audio folder exists
-    if (!fs.existsSync(recordingAudioDir)) {
-      fs.mkdirSync(recordingAudioDir);
+  // Run your merging script
+  execFile("node", [scriptPath, uploadsDir], async (err, stdout, stderr) => {
+    if (err) {
+      console.error("❌ execFile error:", err.message);
+      console.error("stderr:", stderr);
+      return res.status(500).json({ error: err.message });
     }
 
-    execFile(fpcalcPath, ["-json", filePath], async (error, stdout, stderr) => {
+    // ✅ Only check metadata.json after script finishes
+    const metaPath = path.join(__dirname, "uploads", "metadata.json");
+
+    if (!fs.existsSync(metaPath)) {
+      return res.status(500).json({ error: "metadata.json not found" });
+    }
+
+    let meta;
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    } catch (e) {
+      return res.status(500).json({ error: "Invalid metadata.json" });
+    }
+
+    // merged file path from metadata
+    const mergedFilePath = path.join(__dirname, "uploads", "merged.mp3");
+
+    // ✅ Run fpcalc on merged file
+    const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+    execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
       if (error) {
-        console.error(`❌ Script error: ${error.message}`);
+        console.error(`❌ fpcalc error: ${error.message}`);
         return res.status(500).json({ error: "Fingerprinting failed" });
       }
 
-      console.log(`✅ Script output: ${stdout}`);
-
       let fpData;
       try {
-        fpData = JSON.parse(stdout); // parse fpcalc output
+        fpData = JSON.parse(stdout);
       } catch (e) {
-        return res
-          .status(500)
-          .json({ success: false, error: "Invalid fpcalc output" });
+        return res.status(500).json({ error: "Invalid fpcalc output" });
       }
 
       const { duration, fingerprint } = fpData;
-       const fpFileName = req.file.originalname + ".fp";
+
+      // save fingerprint file also
+      const recordingAudioDir = path.join(__dirname, "Recording_Audio");
+      if (!fs.existsSync(recordingAudioDir)) {
+        fs.mkdirSync(recordingAudioDir);
+      }
+
+      const fpFileName = "merged.mp3.fp";
       const fpFilePath = path.join(recordingAudioDir, fpFileName);
       fs.writeFileSync(fpFilePath, fingerprint);
 
       try {
+        // Save in DB
         const record = await prisma.recording.create({
           data: {
-            fileName: req.file.originalname,
-            filePath: `${BASE_URL}/uploads/${req.file.filename}`,
+            fileName: "merged.mp3",
+            filePath: `${BASE_URL}/uploads/merged.mp3`, // serve via express.static
             duration: duration,
             fingerprint: fingerprint,
           },
         });
 
-        res.json(record); // ✅ send response only after saving
+        // ✅ Send combined response
+        res.json({
+          record,
+          totalMissingFiles: meta.totalMissingFiles,
+          startTime: meta.startTime,
+          endTime: meta.endTime,
+          mergedFile: `${BASE_URL}/uploads/merged.mp3`,
+        });
       } catch (dbErr) {
         console.error("DB save error:", dbErr);
         res.status(500).json({ error: "Failed to save recording in DB" });
       }
     });
-  } catch (error) {
-    console.error("Upload error:", error);
-    res.status(500).json({ error: "Failed to upload recording" });
-  }
+  });
 });
+
+
+
 
 app.post('/audiomatching',async(req,res)=>{
 try {
@@ -587,6 +645,137 @@ app.get("/clip", (req, res) => {
 
   });
   
+
+app.get('/app/alltasks',async(req,res)=>{
+    try{
+       const team = await prisma.task.findMany({
+            include: {
+              team: true,
+              member: true,
+            },
+          });
+        if(team)
+        {
+           res.json(team);
+        }
+    }
+    catch(err)
+    {
+       console.log(err);
+    }
+})
+
+app.get("/clips", (req, res) => {
+  let { filePath, startTime, endTime, mergedStart } = req.query;
+  // mergedStart = when the merged file actually begins on station clock (e.g. "06:00:00")
+
+  
+  if (filePath.startsWith("http")) {
+    filePath = filePath.split("/uploads/")[1];
+  }
+  const resolvedPath = path.join(__dirname, "uploads", filePath);
+
+  // helper to convert HH:mm:ss → seconds
+  const toSeconds = (t) => {
+    const [h, m, s] = t.split(":").map(Number);
+    return h * 3600 + m * 60 + s;
+  };
+
+  const mergedStartSec = toSeconds(mergedStart);  // e.g. 21600 (06:00:00)
+  const reqStartSec = toSeconds(startTime);       // e.g. 24323 (06:45:23)
+  const reqEndSec = toSeconds(endTime);           // e.g. 24380 (06:46:20)
+
+  // Shifted times relative to merged file timeline
+  let clipStartSec = reqStartSec - mergedStartSec;
+  let clipEndSec = reqEndSec - mergedStartSec;
+
+  // handle overnight wrap (e.g. mergedStart=06:00, endTime=00:00 next day)
+  if (clipStartSec < 0) clipStartSec += 24 * 3600;
+  if (clipEndSec < 0) clipEndSec += 24 * 3600;
+
+  const duration = clipEndSec - clipStartSec;
+
+  console.log(`Request: ${startTime}–${endTime}`);
+  console.log(`Merged starts at: ${mergedStart}`);
+  console.log(`Actual clip inside file: ${clipStartSec}s → ${clipEndSec}s`);
+
+  ffmpeg(resolvedPath)
+    .setStartTime(clipStartSec) // now in file-relative seconds
+    .setDuration(duration)
+    .format("mp3")
+    .on("error", (err) => {
+      console.error("FFmpeg error:", err.message);
+      res.status(500).send("Error processing audio");
+    })
+    .pipe(res, { end: true });
+});
+
+app.post('/app/savedata',async(req,res)=>{
+   try{
+       const{formData}=req.body;
+       console.log(formData);
+      const insertedRecord = await prisma.audioItem.create({
+          data: {
+            id: formData.id,                       // generate new ID
+            channel: formData.channel,            // required
+            date: new Date(formData.date), // required DateTime
+            start: formData.start   ,      // required
+            end: formData.end,             // required
+            program: formData.program ,         // required
+            region: formData.region,            // required
+            type: formData.type ,                  // required
+            audio: formData.audio || "",                // optional
+          }
+        });
+        if(insertedRecord)
+        {
+           res.json({msg:"Record save"}).status(200);
+
+        }
+   }
+   catch(err)
+   { 
+      console.log(err);
+   }
+})
+
+app.get('/app/getlabel',async(req,res)=>{
+     try{
+             const{city,station,date}=req.query;
+             console.log(typeof(city),typeof(station))
+
+             const response=await prisma.audioItem.findMany({where:{region: { contains: city.trim(), mode: "insensitive" },
+              channel: { contains: station.trim(), mode: "insensitive" },}});
+             console.log("station:",station,"city:",city);
+            //  console.log(response)
+             if(response)
+             {
+              return res.json(response);
+             }
+     }
+     catch(err)
+     {
+       console.log(err);
+       return res.json({msg:"Data not found"});
+     }
+})
+
+app.post('/app/minuteclip',async(req,res)=>{
+   try {
+    const { audio } = req.body; // audio file name, e.g. "merged.mp3"
+
+    const inputFile = path.resolve(__dirname,"backend" ,"../uploads", audio);
+    const outputDir = path.resolve(__dirname, "clips");
+
+    await clipAudio(inputFile, outputDir, 300); // 300s = 5min clips
+
+    res.status(200).json({ success: true, message: "Clips created successfully" });
+  } catch (err) {
+    console.error("❌ API Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+})
+
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 

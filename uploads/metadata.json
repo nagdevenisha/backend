@@ -1,0 +1,271 @@
+{
+  "metadata": [
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 0,
+      "startTime": "00:00:00",
+      "endTime": "01:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 1,
+      "startTime": "01:00:00",
+      "endTime": "02:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 2,
+      "startTime": "02:00:00",
+      "endTime": "03:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 3,
+      "startTime": "03:00:00",
+      "endTime": "04:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 4,
+      "startTime": "04:00:00",
+      "endTime": "05:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": null,
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 5,
+      "startTime": "05:00:00",
+      "endTime": "06:00:00",
+      "duration": 0,
+      "missing": true,
+      "missingDuration": 3600
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 06-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 6,
+      "startTime": "06:00:00",
+      "endTime": "07:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 07-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 7,
+      "startTime": "07:00:00",
+      "endTime": "08:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 08-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 8,
+      "startTime": "08:00:00",
+      "endTime": "09:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 09-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 9,
+      "startTime": "09:00:00",
+      "endTime": "10:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 10-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 10,
+      "startTime": "10:00:00",
+      "endTime": "11:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 11-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 11,
+      "startTime": "11:00:00",
+      "endTime": "12:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 12-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 12,
+      "startTime": "12:00:00",
+      "endTime": "13:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 13-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 13,
+      "startTime": "13:00:00",
+      "endTime": "14:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 14-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 14,
+      "startTime": "14:00:00",
+      "endTime": "15:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 15-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 15,
+      "startTime": "15:00:00",
+      "endTime": "16:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 16-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 16,
+      "startTime": "16:00:00",
+      "endTime": "17:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 17-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 17,
+      "startTime": "17:00:00",
+      "endTime": "18:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 18-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 18,
+      "startTime": "18:00:00",
+      "endTime": "19:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 19-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 19,
+      "startTime": "19:00:00",
+      "endTime": "20:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 20-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 20,
+      "startTime": "20:00:00",
+      "endTime": "21:00:00",
+      "duration": 3590,
+      "missing": false,
+      "missingDuration": 10
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 21-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 21,
+      "startTime": "21:00:00",
+      "endTime": "22:00:00",
+      "duration": 3591,
+      "missing": false,
+      "missingDuration": 9
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 22-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 22,
+      "startTime": "22:00:00",
+      "endTime": "23:00:00",
+      "duration": 3590,
+      "missing": false,
+      "missingDuration": 10
+    },
+    {
+      "file": "2025-07-01 Fever_Karnal 23-00-00.mp3",
+      "date": "2025-07-01",
+      "station": "Fever_Karnal",
+      "hour": 23,
+      "startTime": "23:00:00",
+      "endTime": "00:00:00",
+      "duration": 3615,
+      "missing": false,
+      "missingDuration": 0
+    }
+  ],
+  "totalMissingFiles": 6,
+  "startTime": "06:00:00",
+  "endTime": "00:00:00"
+}
