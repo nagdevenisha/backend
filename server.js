@@ -554,10 +554,16 @@ app.post("/upload", upload.array("files"), async (req, res) => {
         }
 
         // 🗑️ Delete local metadata.json
-       if (fs.existsSync(uploadsDir)) {
-          fs.rmSync(uploadsDir, { recursive: true, force: true });
-          console.log("🗑️ Deleted entire uploads folder after merge & upload");
+          const files = fs.readdirSync(uploadsDir);
+      for (const file of files) {
+        const filePath = path.join(uploadsDir, file);
+        if (fs.lstatSync(filePath).isFile()) {
+          fs.unlinkSync(filePath); // delete file
+        } else if (fs.lstatSync(filePath).isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true }); // delete subfolder
         }
+      }
+      console.log("🗑️ Deleted all files in uploads folder, folder remains intact");
 
         // Save in DB
         const record = await prisma.recording.create({
