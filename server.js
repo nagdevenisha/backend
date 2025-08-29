@@ -21,7 +21,7 @@ import { uploadFileToS3 } from './Server/uploadFileToS3.js';
 
 dotenv.config();
 const app=express();
-//  app.use(cors());
+ app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
