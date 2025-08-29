@@ -18,10 +18,11 @@ import { uploadFileToS3 } from './Server/uploadFileToS3.js';
 
 
 
+
 dotenv.config();
 const app=express();
- app.use(cors());
-//  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+//  app.use(cors());
+ app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
@@ -31,8 +32,9 @@ const __dirname = path.dirname(__filename);
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+
 const auth = new google.auth.GoogleAuth({
-  keyFile: "./Server/scripts/service-account.json", // path to JSON key
+  keyFile: process.env.GOOGLE_CLOUD_CREDENTIALS, // path to JSON key
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
