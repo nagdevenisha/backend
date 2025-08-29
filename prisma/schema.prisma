@@ -87,6 +87,7 @@ model Recording {
   fileName    String   // camelCase
   filePath    String
   duration    Int
+  jsonPath    String? 
   fingerprint String
 }
 model MatchResult {

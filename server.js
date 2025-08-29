@@ -12,16 +12,17 @@ import fs from 'fs';
 import { fileURLToPath } from "url";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import clipAudio from './Server/clipAudio.js'
+import clipAudio from './Server/clipAudio.js';
+import { google } from 'googleapis';
+import { uploadFileToS3 } from './Server/uploadFileToS3.js';
 
 
 
 dotenv.config();
-
 const app=express();
+ app.use(cors());
+//  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 app.use(express.json());
-//  app.use(cors());
- app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -29,6 +30,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+const auth = new google.auth.GoogleAuth({
+  keyFile: "./Server/scripts/service-account.json", // path to JSON key
+  scopes: [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+  ],
+});
+const sheets = google.sheets({ version: "v4", auth });
+const drive = google.drive({ version: "v3", auth });
+
 
 app.post("/app/register", async (req, res) => {
   console.log(req.body);
@@ -458,27 +470,13 @@ app.post("/api/master/upload", upload.array("masterFiles"), async (req, res) => 
   });
 });
 
-function waitForFile(filePath, timeoutMs = 30 * 60 * 1000) { // 30 min max
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const interval = setInterval(() => {
-      if (fs.existsSync(filePath)) {
-        clearInterval(interval);
-        resolve(true);
-      } else if (Date.now() - start > timeoutMs) {
-        clearInterval(interval);
-        reject(new Error("Timeout waiting for metadata.json"));
-      }
-    }, 5000); // check every 5 seconds
-  });
-}
 app.post("/upload", upload.array("files"), async (req, res) => {
   console.log("Uploaded files:", req.files);
 
   const scriptPath = path.resolve(__dirname, "Server/checkAudioFiles.js");
   const uploadsDir = path.join(__dirname, "uploads");
 
-  // Run your merging script
+  // Run merging script
   execFile("node", [scriptPath, uploadsDir], async (err, stdout, stderr) => {
     if (err) {
       console.error("❌ execFile error:", err.message);
@@ -486,9 +484,8 @@ app.post("/upload", upload.array("files"), async (req, res) => {
       return res.status(500).json({ error: err.message });
     }
 
-    // ✅ Only check metadata.json after script finishes
-    const metaPath = path.join(__dirname, "uploads", "metadata.json");
-
+    // ✅ Check metadata.json
+    const metaPath = path.join(uploadsDir, "metadata.json");
     if (!fs.existsSync(metaPath)) {
       return res.status(500).json({ error: "metadata.json not found" });
     }
@@ -500,10 +497,10 @@ app.post("/upload", upload.array("files"), async (req, res) => {
       return res.status(500).json({ error: "Invalid metadata.json" });
     }
 
-    // merged file path from metadata
-    const mergedFilePath = path.join(__dirname, "uploads", "merged.mp3");
+    // merged file path
+    const mergedFilePath = path.join(uploadsDir, "merged.mp3");
 
-    // ✅ Run fpcalc on merged file
+    // Run fpcalc on merged file
     const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
     execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
       if (error) {
@@ -520,34 +517,64 @@ app.post("/upload", upload.array("files"), async (req, res) => {
 
       const { duration, fingerprint } = fpData;
 
-      // save fingerprint file also
-      const recordingAudioDir = path.join(__dirname, "Recording_Audio");
-      if (!fs.existsSync(recordingAudioDir)) {
-        fs.mkdirSync(recordingAudioDir);
-      }
-
-      const fpFileName = "merged.mp3.fp";
-      const fpFilePath = path.join(recordingAudioDir, fpFileName);
-      fs.writeFileSync(fpFilePath, fingerprint);
-
       try {
+        // Extract city, station, date from metadata or request
+    
+        let city = req.body.city || meta.city;
+        let station = req.body.station || meta.station;
+        let date = req.body.date || meta.date;
+
+        if (Array.isArray(city)) city = city[0];
+        if (Array.isArray(station)) station = station[0];
+        if (Array.isArray(date)) date = date[0];
+
+        const bucket = process.env.AWS_BUCKET_NAME;
+
+        // ✅ Upload merged audio
+        const audioKey = `${city}/${station}/${date}merged.mp3`;
+        const s3UrlAudio = await uploadFileToS3(bucket, audioKey, mergedFilePath);
+
+        // ✅ Upload metadata.json
+        const jsonKey = `data/${city}/${station}/${date}.json`;
+        const s3UrlJson = await uploadFileToS3(bucket, jsonKey, metaPath);
+
+        // 🗑️ Cleanup processed folder
+        const processedFolder = path.join(uploadsDir, "processed_audio");
+        if (fs.existsSync(processedFolder)) {
+          fs.rmSync(processedFolder, { recursive: true, force: true });
+          console.log("🗑️ Deleted processed_audio folder");
+        }
+
+        // 🗑️ Delete local merged.mp3
+        if (fs.existsSync(mergedFilePath)) {
+          fs.unlinkSync(mergedFilePath);
+          console.log("🗑️ Deleted local merged.mp3");
+        }
+
+        // 🗑️ Delete local metadata.json
+       if (fs.existsSync(uploadsDir)) {
+          fs.rmSync(uploadsDir, { recursive: true, force: true });
+          console.log("🗑️ Deleted entire uploads folder after merge & upload");
+        }
+
         // Save in DB
         const record = await prisma.recording.create({
           data: {
             fileName: "merged.mp3",
-            filePath: `${BASE_URL}/uploads/merged.mp3`, // serve via express.static
+            filePath: s3UrlAudio,
+            jsonPath: s3UrlJson,
             duration: duration,
             fingerprint: fingerprint,
           },
         });
 
-        // ✅ Send combined response
         res.json({
           record,
           totalMissingFiles: meta.totalMissingFiles,
           startTime: meta.startTime,
           endTime: meta.endTime,
-          mergedFile: `${BASE_URL}/uploads/merged.mp3`,
+          mergedFile: s3UrlAudio,
+          metadataFile: s3UrlJson,
         });
       } catch (dbErr) {
         console.error("DB save error:", dbErr);
@@ -556,7 +583,6 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     });
   });
 });
-
 
 
 
@@ -775,6 +801,68 @@ app.post('/app/minuteclip',async(req,res)=>{
     res.status(500).json({ success: false, error: err.message });
   }
 })
+
+
+app.post('/app/savemetadata', async (req, res) => {
+  try {
+    const { metadata } = req.body;
+    if (!metadata || !metadata.city || !metadata.date || !metadata.channel) {
+      return res.status(400).json({ success: false, message: "City, date, and channel are required" });
+    }
+
+    console.log("Received metadata:", metadata);
+
+    // --- 1. Find the city folder inside your personal Drive ---
+    const topLevelFolderId = "1oz5sL1U0cg7TH2rRm6gkCePVML35Ut-z"; // Radio Metadata
+    const folderRes = await drive.files.list({
+      q: `'${topLevelFolderId}' in parents and name='${metadata.city}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: "files(id, name)",
+    });
+
+    if (folderRes.data.files.length === 0) {
+      return res.status(400).json({ success: false, message: "City folder not found" });
+    }
+
+    const cityFolderId = folderRes.data.files[0].id;
+
+    // --- 2. Build sheet name dynamically (manually created sheet) ---
+    const sheetName = `${metadata.date}_${metadata.channel}_${metadata.city}`;
+
+    // --- 3. Find the existing sheet in the city folder ---
+    const driveRes = await drive.files.list({
+      q: `'${cityFolderId}' in parents and name='${sheetName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+      fields: "files(id, name)",
+    });
+
+    if (driveRes.data.files.length === 0) {
+      return res.status(400).json({ success: false, message: `Sheet '${sheetName}' not found in folder '${metadata.city}'` });
+    }
+
+    const spreadsheetId = driveRes.data.files[0].id;
+
+    // --- 4. Append metadata row ---
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "Sheet1!A2", // append below existing data
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [Object.values(metadata)] },
+    });
+
+    res.json({
+      success: true,
+      message: "Metadata appended successfully",
+      cityFolderId,
+      spreadsheetId,
+    });
+
+  } catch (err) {
+    console.error("Error saving metadata:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
 
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
