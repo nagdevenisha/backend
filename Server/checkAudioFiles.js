@@ -198,16 +198,16 @@ function getDurationInSeconds(filePath) {
   // Merge all into single file
   const mergedOutput = path.join(folderPath, `merged.mp3`);
   await new Promise((resolve, reject) => {
-  ffmpeg()
+ffmpeg()
     .input(concatPath)
-    .inputOptions('-f', 'concat', '-safe', '0')
-    .audioCodec('libmp3lame')   // 👈 re-encode
-    .audioBitrate('192k')       // keep consistent bitrate
+    .inputOptions(['-f', 'concat', '-safe', '0'])
+    .outputOptions(['-c copy'])   // ⚡ No re-encode
     .output(mergedOutput)
     .on('end', resolve)
     .on('error', reject)
     .run();
 });
+
 
   console.log(`✅ Done! Total Missing: ${totalMissingFiles}`);
 
