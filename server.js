@@ -510,26 +510,14 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
     
         const isWin = os.platform() === "win32";
-        exec("which fpcalc", (err, stdout) => {
-          if (err) {
-            console.error("❌ fpcalc not found");
-          } else {
-            console.log("✅ fpcalc path:", stdout);
-          }
-        });
         const fpcalcPath = path.join(
           __dirname,
+          "Server",
           "tools",
           isWin ? "fpcalc.exe" : "fpcalc"
         );
     execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
-        execFile("which fpcalc", (err, stdout) => {
-       if (err) console.error("fpcalc not found");
-       else console.log("fpcalc path:", stdout);
-     });
-    execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
-
       if (error) {
         console.error(`❌ fpcalc error: ${error.message}`);
         return res.status(500).json({ error: "Fingerprinting failed" });
@@ -616,7 +604,6 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     })
     });
   });
-});
 
 
 
