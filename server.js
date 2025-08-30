@@ -504,7 +504,7 @@ app.post("/upload", upload.array("files"), async (req, res) => {
 
     // Run fpcalc on merged file
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
-        exec("which fpcalc", (err, stdout) => {
+        execFile("which fpcalc", (err, stdout) => {
        if (err) console.error("fpcalc not found");
        else console.log("fpcalc path:", stdout);
      });
