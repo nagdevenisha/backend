@@ -15,13 +15,14 @@ import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import clipAudio from './Server/clipAudio.js';
 import { google } from 'googleapis';
 import { uploadFileToS3 } from './Server/uploadFileToS3.js';
+import os from 'os';
 
 
 
 
 dotenv.config();
 const app=express();
- app.use(cors());
+//  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
@@ -503,12 +504,25 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     const mergedFilePath = path.join(uploadsDir, "merged.mp3");
 
     // Run fpcalc on merged file
+<<<<<<< HEAD
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
         execFile("which fpcalc", (err, stdout) => {
        if (err) console.error("fpcalc not found");
        else console.log("fpcalc path:", stdout);
      });
     execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
+=======
+    // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+    
+        const isWin = os.platform() === "win32";
+
+        const fpcalcPath = path.join(
+          __dirname,
+          "tools",
+          isWin ? "fpcalc.exe" : "fpcalc"
+        );
+    execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
+>>>>>>> 44ee724 (changed things)
       if (error) {
         console.error(`❌ fpcalc error: ${error.message}`);
         return res.status(500).json({ error: "Fingerprinting failed" });
