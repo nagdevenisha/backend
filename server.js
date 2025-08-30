@@ -1,9 +1,6 @@
 import { prisma } from './client/PrismaClients.js';
 import { redis } from './client/RedisClient.js';
 import express from "express";
-
-import { execFile ,exec} from 'child_process';
-
 import { execFile,exec } from 'child_process';
 
 import bcrypt from "bcryptjs";
@@ -513,7 +510,13 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
     
         const isWin = os.platform() === "win32";
-
+        exec("which fpcalc", (err, stdout) => {
+          if (err) {
+            console.error("❌ fpcalc not found");
+          } else {
+            console.log("✅ fpcalc path:", stdout);
+          }
+        });
         const fpcalcPath = path.join(
           __dirname,
           "tools",
