@@ -504,14 +504,14 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     const mergedFilePath = path.join(uploadsDir, "merged.mp3");
 
     // Run fpcalc on merged file
-<<<<<<< HEAD
+
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
         execFile("which fpcalc", (err, stdout) => {
        if (err) console.error("fpcalc not found");
        else console.log("fpcalc path:", stdout);
      });
     execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
-=======
+
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
     
         const isWin = os.platform() === "win32";
@@ -522,7 +522,21 @@ app.post("/upload", upload.array("files"), async (req, res) => {
           isWin ? "fpcalc.exe" : "fpcalc"
         );
     execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
->>>>>>> 44ee724 (changed things)
+
+    // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
+        exec("which fpcalc", (err, stdout) => {
+       if (err) console.error("fpcalc not found");
+       else console.log("fpcalc path:", stdout);
+     });
+     const isWin = os.platform() === "win32";
+
+      const fpcalcPath = path.join(
+        __dirname,
+        "tools",
+        isWin ? "fpcalc.exe" : "fpcalc"
+      );
+    execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
+
       if (error) {
         console.error(`❌ fpcalc error: ${error.message}`);
         return res.status(500).json({ error: "Fingerprinting failed" });
@@ -609,6 +623,7 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     });
   });
 });
+  });
 
 
 
@@ -890,6 +905,6 @@ app.post('/app/savemetadata', async (req, res) => {
 
 
 
-const port=3001;
-app.listen(port,()=>console.log(`Backend running on ${port}`));
 
+const port=3001;
+app.listen(port,()=>console.log(`Backend running on ${port}`))
