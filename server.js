@@ -1,11 +1,11 @@
 import { prisma } from './client/PrismaClients.js';
 import { redis } from './client/RedisClient.js';
 import express from "express";
-<<<<<<< HEAD
+
 import { execFile ,exec} from 'child_process';
-=======
+
 import { execFile,exec } from 'child_process';
->>>>>>> 33d0d2d (changes defined)
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cors from 'cors';
