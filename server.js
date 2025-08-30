@@ -504,7 +504,7 @@ app.post("/upload", upload.array("files"), async (req, res) => {
 
     // Run fpcalc on merged file
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
-    execFile(fpcalc, ["-json", mergedFilePath], async (error, stdout, stderr) => {
+    execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
       if (error) {
         console.error(`❌ fpcalc error: ${error.message}`);
         return res.status(500).json({ error: "Fingerprinting failed" });
