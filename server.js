@@ -1,7 +1,7 @@
 import { prisma } from './client/PrismaClients.js';
 import { redis } from './client/RedisClient.js';
 import express from "express";
-import { execFile } from 'child_process';
+import { execFile ,exec} from 'child_process';
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cors from 'cors';
@@ -413,7 +413,8 @@ app.post("/api/master/upload", upload.array("masterFiles"), async (req, res) => 
 
   for (const file of req.files) {
     const filePath = path.join(__dirname, "uploads", file.filename);
-    const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+    const fpcalcPath = path.join(__dirname, "Server", "tools", isWin ? "fpcalc.exe" : "fpcalc");
+
 
     try {
       const { stdout } = await new Promise((resolve, reject) => {
@@ -472,7 +473,6 @@ app.post("/api/master/upload", upload.array("masterFiles"), async (req, res) => 
     files: results,
   });
 });
-
 app.post("/upload", upload.array("files"), async (req, res) => {
   console.log("Uploaded files:", req.files);
 
@@ -504,14 +504,6 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     const mergedFilePath = path.join(uploadsDir, "merged.mp3");
 
     // Run fpcalc on merged file
-
-    // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
-        execFile("which fpcalc", (err, stdout) => {
-       if (err) console.error("fpcalc not found");
-       else console.log("fpcalc path:", stdout);
-     });
-    execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
-
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
     
         const isWin = os.platform() === "win32";
@@ -522,20 +514,12 @@ app.post("/upload", upload.array("files"), async (req, res) => {
           isWin ? "fpcalc.exe" : "fpcalc"
         );
     execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
-
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc");
-        exec("which fpcalc", (err, stdout) => {
+        execFile("which fpcalc", (err, stdout) => {
        if (err) console.error("fpcalc not found");
        else console.log("fpcalc path:", stdout);
      });
-     const isWin = os.platform() === "win32";
-
-      const fpcalcPath = path.join(
-        __dirname,
-        "tools",
-        isWin ? "fpcalc.exe" : "fpcalc"
-      );
-    execFile(fpcalcPath, ["-json", mergedFilePath], async (error, stdout, stderr) => {
+    execFile("fpcalc", ["-json", mergedFilePath], async (error, stdout, stderr) => {
 
       if (error) {
         console.error(`❌ fpcalc error: ${error.message}`);
@@ -620,10 +604,10 @@ app.post("/upload", upload.array("files"), async (req, res) => {
         console.error("DB save error:", dbErr);
         res.status(500).json({ error: "Failed to save recording in DB" });
       }
+    })
     });
   });
 });
-  });
 
 
 
@@ -905,6 +889,6 @@ app.post('/app/savemetadata', async (req, res) => {
 
 
 
-
 const port=3001;
-app.listen(port,()=>console.log(`Backend running on ${port}`))
+app.listen(port,()=>console.log(`Backend running on ${port}`));
+
