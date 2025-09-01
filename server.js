@@ -17,15 +17,16 @@ import clipAudio from './Server/clipAudio.js';
 import { google } from 'googleapis';
 import { uploadFileToS3 } from './Server/uploadFileToS3.js';
 import os from 'os';
-
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { PassThrough } from "stream";
 
 
 
 dotenv.config();
 const app=express();
-//  app.use(cors());
+ app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
-app.use(express.json());
+// app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -712,49 +713,68 @@ app.get('/app/alltasks',async(req,res)=>{
     }
 })
 
-app.get("/clips", (req, res) => {
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+app.get("/clips", async (req, res) => {
   let { filePath, startTime, endTime, mergedStart } = req.query;
-  // mergedStart = when the merged file actually begins on station clock (e.g. "06:00:00")
 
-  
-  if (filePath.startsWith("http")) {
-    filePath = filePath.split("/uploads/")[1];
-  }
-  const resolvedPath = path.join(__dirname, "uploads", filePath);
-
-  // helper to convert HH:mm:ss → seconds
+  // ✅ Convert HH:mm:ss → seconds
   const toSeconds = (t) => {
     const [h, m, s] = t.split(":").map(Number);
     return h * 3600 + m * 60 + s;
   };
 
-  const mergedStartSec = toSeconds(mergedStart);  // e.g. 21600 (06:00:00)
-  const reqStartSec = toSeconds(startTime);       // e.g. 24323 (06:45:23)
-  const reqEndSec = toSeconds(endTime);           // e.g. 24380 (06:46:20)
+  const mergedStartSec = toSeconds(mergedStart);
+  const reqStartSec = toSeconds(startTime);
+  const reqEndSec = toSeconds(endTime);
 
-  // Shifted times relative to merged file timeline
   let clipStartSec = reqStartSec - mergedStartSec;
   let clipEndSec = reqEndSec - mergedStartSec;
 
-  // handle overnight wrap (e.g. mergedStart=06:00, endTime=00:00 next day)
   if (clipStartSec < 0) clipStartSec += 24 * 3600;
   if (clipEndSec < 0) clipEndSec += 24 * 3600;
 
   const duration = clipEndSec - clipStartSec;
 
-  console.log(`Request: ${startTime}–${endTime}`);
-  console.log(`Merged starts at: ${mergedStart}`);
   console.log(`Actual clip inside file: ${clipStartSec}s → ${clipEndSec}s`);
 
-  ffmpeg(resolvedPath)
-    .setStartTime(clipStartSec) // now in file-relative seconds
-    .setDuration(duration)
-    .format("mp3")
-    .on("error", (err) => {
-      console.error("FFmpeg error:", err.message);
-      res.status(500).send("Error processing audio");
-    })
-    .pipe(res, { end: true });
+  try {
+    // ✅ Parse S3 URL
+    const url = new URL(filePath);
+    const bucket = url.hostname.split(".")[0]; // "radio-clip-studio-audio"
+    const key = decodeURIComponent(url.pathname.substring(1)); // "karnal/radio-city/2025-09-03merged.mp3"
+    console.log(key);
+
+    // ✅ Stream file directly from S3
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    const s3Stream = (await s3.send(command)).Body;
+
+    // ✅ Pass through to FFmpeg
+    const pass = new PassThrough();
+    s3Stream.pipe(pass);
+
+    // ✅ Use FFmpeg to trim audio
+    ffmpeg(pass)
+      .inputFormat("mp3") // important since streaming
+      .setStartTime(clipStartSec)
+      .setDuration(duration)
+      .format("mp3")
+      .on("error", (err) => {
+        console.error("FFmpeg error:", err.message);
+        res.status(500).send("Error processing audio");
+      })
+      .pipe(res, { end: true });
+
+  } catch (err) {
+    console.error("S3 error:", err);
+    res.status(500).send("Error reading from S3");
+  }
 });
 
 app.post('/app/savedata',async(req,res)=>{
