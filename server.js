@@ -26,7 +26,7 @@ dotenv.config();
 const app=express();
  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
-// app.use(express.json());
+ app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -827,21 +827,35 @@ app.get('/app/getlabel',async(req,res)=>{
      }
 })
 
-app.post('/app/minuteclip',async(req,res)=>{
-   try {
-    const { audio } = req.body; // audio file name, e.g. "merged.mp3"
+app.post("/app/minuteclip", async (req, res) => {
+  try {
+    const { audio, city,date } = req.body; // send city from frontend too
 
-    const inputFile = path.resolve(__dirname,"backend" ,"../uploads", audio);
+    const inputFile = path.resolve(__dirname, "../uploads", audio);
     const outputDir = path.resolve(__dirname, "clips");
 
-    await clipAudio(inputFile, outputDir, 300); // 300s = 5min clips
+    // Run your clip function (assuming it returns array of generated file paths)
+    const clipFiles = await clipAudio(inputFile, outputDir, 300); 
 
-    res.status(200).json({ success: true, message: "Clips created successfully" });
+    // Upload each clip to S3
+    const uploadedUrls = [];
+    for (const file of clipFiles) {
+      const fileName = path.basename(file);
+      const s3Key = `clips/${city}/${date}/${fileName}`;
+      const url = await uploadFileToS3(file, s3Key);
+      uploadedUrls.push(url);
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Clips created and uploaded successfully",
+      files: uploadedUrls 
+    });
   } catch (err) {
     console.error("❌ API Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
-})
+});
 
 
 app.post('/app/savemetadata', async (req, res) => {
