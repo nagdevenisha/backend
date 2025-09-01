@@ -1,37 +1,72 @@
-// Server/clipAudio.js
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import path from "path";
-import { fileURLToPath } from "url";
+import ffmpegPath from "@ffmpeg-installer/ffmpeg";
+import ffprobePath from "@ffprobe-installer/ffprobe";
+import { Upload } from "@aws-sdk/lib-storage";
 import fs from "fs";
+import os from "os";
+import path from "path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+ffmpeg.setFfmpegPath(ffmpegPath.path);
+ffmpeg.setFfprobePath(ffprobePath.path);
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+const s3 = new S3Client({ region: process.env.AWS_REGION });
 
-export default async function splitAudio(inputFile, outputDir, clipDuration = 300) {
+async function downloadFile(bucket, key) {
+  const tmpPath = path.join(os.tmpdir(), path.basename(key));
+  const { Body } = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return new Promise((resolve, reject) => {
-    // Ensure clips folder exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    const file = fs.createWriteStream(tmpPath);
+    Body.pipe(file);
+    Body.on("error", reject);
+    file.on("finish", () => resolve(tmpPath));
+  });
+}
 
-    ffmpeg(inputFile)
-      .outputOptions([
-        "-f", "segment",
-        "-segment_time", clipDuration.toString(),
-        "-c", "copy"
-      ])
-      .output(`${outputDir}/clip_%03d.mp3`) // padded numbers
-      .on("end", () => {
-        console.log("✅ Audio split successfully!");
-        resolve("done");
-      })
-      .on("error", (err) => {
-        console.error("❌ Error:", err.message);
-        reject(err);
-      })
-      .run();
+async function uploadFile(bucket, key, filePath) {
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: bucket,
+      Key: key,
+      Body: fs.createReadStream(filePath),
+    },
+  });
+  await upload.done();
+  return `https://${bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+}
+
+export default async function clipAudio(bucket, key,city,date,station, baseName = "clip") {
+  const localFile = await downloadFile(bucket, key);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(localFile, async (err, metadata) => {
+      if (err) return reject(err);
+
+      const duration = Math.floor(metadata.format.duration);
+      const segmentLength = 300; // 5 minutes
+      const clipUrls = [];
+
+      for (let start = 0, index = 0; start < duration; start += segmentLength, index++) {
+        const outputPath = path.join(os.tmpdir(), `${baseName}_${index}.mp3`);
+        await new Promise((res, rej) => {
+          ffmpeg(localFile)
+            .setStartTime(start)
+            .duration(segmentLength)
+            .output(outputPath)
+            .on("end", res)
+            .on("error", rej)
+            .run();
+        });
+
+        const s3Key = `clips/${city}/${station}/${date}/${baseName}_${index}.mp3`;
+        const url = await uploadFile(bucket, s3Key, outputPath);
+        clipUrls.push(url);
+        fs.unlinkSync(outputPath); // cleanup temp clip
+      }
+
+      fs.unlinkSync(localFile); // cleanup full file
+      resolve(clipUrls);
+    });
   });
 }

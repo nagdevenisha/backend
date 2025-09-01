@@ -1,6 +1,6 @@
-const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
-const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const fs = require("fs");
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from "fs";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -11,8 +11,10 @@ const s3 = new S3Client({
 });
 
 // Upload file to S3
-async function uploadFileToS3(bucket, key, filePath) {
-  const fileStream = fs.createReadStream(filePath);
+export  async function uploadFileToS3(bucket, key, filePath) {
+   console.log(bucket);
+   const normalizedPath = path.resolve(filePath);
+  const fileStream = fs.createReadStream(normalizedPath);
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -24,14 +26,14 @@ async function uploadFileToS3(bucket, key, filePath) {
   await s3.send(command);
 
   // Return pre-signed URL valid for 1 hour
-  return await getPresignedUrl(bucket, key, 3600);
+  return await getPresignedUrl(bucket, key, 86400);
 }
 
 // Generate pre-signed URL for an existing file
-async function getPresignedUrl(bucket, key, expiresIn = 3600) {
+async function getPresignedUrl(bucket, key, expiresIn = 86400) {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
   const url = await getSignedUrl(s3, command, { expiresIn });
   return url;
 }
 
-module.exports = { uploadFileToS3, getPresignedUrl };
+

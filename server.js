@@ -20,11 +20,9 @@ import os from 'os';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { PassThrough } from "stream";
 
-
-
 dotenv.config();
 const app=express();
- app.use(cors());
+//  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
  app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
@@ -417,6 +415,7 @@ app.post("/api/master/upload", upload.array("masterFiles"), async (req, res) => 
     const filePath = path.join(__dirname, "uploads", file.filename);
 
     // const fpcalcPath = path.join(__dirname, "Server", "tools", "fpcalc.exe");
+     const isWin = os.platform() === "win32";
     const fpcalcPath = path.join(__dirname, "Server", "tools", isWin ? "fpcalc.exe" : "fpcalc");
 
 
@@ -569,7 +568,7 @@ app.post("/upload", upload.array("files"), async (req, res) => {
 
         // 🗑️ Delete local metadata.json
           const files = fs.readdirSync(uploadsDir);
-      for (const file of files) {
+        for (const file of files) {
         const filePath = path.join(uploadsDir, file);
         if (fs.lstatSync(filePath).isFile()) {
           fs.unlinkSync(filePath); // delete file
@@ -829,20 +828,27 @@ app.get('/app/getlabel',async(req,res)=>{
 
 app.post("/app/minuteclip", async (req, res) => {
   try {
-    const { audio, city,date } = req.body; // send city from frontend too
-
-    const inputFile = path.resolve(__dirname, "../uploads", audio);
-    const outputDir = path.resolve(__dirname, "clips");
+    const { audio, city,date,station } = req.body; // send city from frontend too
+    console.log(audio);
+    
+    //  const inputFile=path.resolve(__dirname,audio);
+     const outputDir = path.resolve(__dirname, "clip");
 
     // Run your clip function (assuming it returns array of generated file paths)
-    const clipFiles = await clipAudio(inputFile, outputDir, 300); 
-
+      const bucket = process.env.AWS_BUCKET_NAME;
+      const{key} =  extractBucketAndKey(audio);   // path inside S3
+      const outputFile = `${outputDir}/clip.mp3`; 
+      console.log("key:",key)
+      console.log(bucket,key,outputFile)
+      const clipFiles = await clipAudio(bucket,key,city,date,station, "clip");
     // Upload each clip to S3
-    const uploadedUrls = [];
+      console.log(clipFiles);
+      const uploadedUrls = [];
+
     for (const file of clipFiles) {
       const fileName = path.basename(file);
       const s3Key = `clips/${city}/${date}/${fileName}`;
-      const url = await uploadFileToS3(file, s3Key);
+      const url = await uploadFileToS3(bucket, s3Key, file);
       uploadedUrls.push(url);
     }
 
@@ -856,7 +862,16 @@ app.post("/app/minuteclip", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+function extractBucketAndKey(s3Url) {
+  const url = new URL(s3Url);
+  const hostParts = url.hostname.split(".");
+  const bucket = hostParts[0]; // "radio-clip-studio-audio"
 
+  // Remove leading slash and query string
+  const key = url.pathname.slice(1); // "karnal/radio-city/2025-09-03merged.mp3"
+
+  return {  key };
+}
 
 app.post('/app/savemetadata', async (req, res) => {
   try {
@@ -916,7 +931,6 @@ app.post('/app/savemetadata', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 
 const port=3001;
