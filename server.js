@@ -2,6 +2,7 @@ import { prisma } from './client/PrismaClients.js';
 import { redis } from './client/RedisClient.js';
 import express from "express";
 import { execFile,exec } from 'child_process';
+import uploads from './Server/upload.js';
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -288,72 +289,155 @@ app.get('/app/teamspercity',async(req,res)=>{
    }
 })
 
-app.post('/app/tasks',async(req,res)=>{
+// app.post('/app/tasks',async(req,res)=>{
 
-  const{city,station,leadName,teamName,tasks}=req.body;
-  console.log(tasks);
-  try
-  {
-    const team = await prisma.team.findFirst({
-    where: {
-      city,
-      station,
-      leadName,
-      teamName
+//   const{city,station,leadName,teamName,tasks}=req.body;
+//   console.log(tasks);
+//   try
+//   {
+//     const team = await prisma.team.findFirst({
+//     where: {
+//       city,
+//       station,
+//       leadName,
+//       teamName
+//     }
+//   });
+//   await prisma.team.update({
+//   where: { id: team.id },
+//   data: {
+//     totalassignedtask: { increment: 1 }
+//   }
+//   });
+
+//   // 2️⃣ Find the member in that team
+//   const member = await prisma.member.findFirst({
+//     where: {
+//       teamId: team.id,
+//       name: tasks.assignto
+//     }
+//   });
+
+//   const bucket = process.env.AWS_BUCKET_NAME;
+//   const uploadedUrls = [];
+
+//     if (tasks.audio && tasks.audio.length > 0) {
+//   const uploadedUrls = [];
+
+//   for (let i = 0; i < tasks.audio.length; i++) {
+//     const file = tasks.audio[i];
+//      const s3Key = `tasks/${city}/${station}/${file}`;
+
+//     // Upload file.buffer directly (since using multer.memoryStorage)
+//     const url = await upload(bucket, s3Key, file);
+
+//     uploadedUrls.push(url);
+//   }
+
+//   console.log(uploadedUrls); // Each file now has its own URL
+// }
+
+//   // 3️⃣ Create the task for that member & team
+//   const task = await prisma.task.create({
+//     data: {
+//       instructions:tasks.instructions,
+//       assignto:tasks.assignto,
+//       audio: Array.isArray(tasks.audio[0]) ? tasks.audio[0] : tasks.audio, 
+//       teamId: team.id,
+//       memberId: member.id,
+//     }
+//   });
+//   const today = new Date();
+//   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+
+//   await prisma.teamDailyStats.upsert({
+//     where: { teamId_date: { teamId: team.id, date: startOfDay } },
+//     update: { assigned: { increment: 1 } },
+//     create: { teamId: team.id, date: startOfDay, assigned: 1 }
+//   });
+
+//   if(task)
+//   {
+//      const tasks = await prisma.task.findMany({
+//         include: {
+//           team: true,   // fetch all team fields
+//           member: true, // fetch all member fields
+//         }
+//       });
+
+//      res.status(200).json(tasks);
+//   }
+//   }
+//   catch(err)
+//   {
+//      console.log(err);
+//   }
+
+// })
+const uploadMiddleware = multer({ storage: multer.memoryStorage() });
+
+app.post("/app/tasks", uploadMiddleware.array("audio"), async (req, res) => {
+  try {
+    // Destructure fields from req.body
+    const { city, station, leadName, teamName, assignto, instructions } = req.body;
+
+    const tasks = {
+      assignto,
+      instructions,
+      audio: req.files // multer puts files in req.files
+    };
+
+    console.log(tasks); // files available as buffers
+
+    const team = await prisma.team.findFirst({ where: { city, station, leadName, teamName } });
+    await prisma.team.update({ where: { id: team.id }, data: { totalassignedtask: { increment: 1 } } });
+
+    const member = await prisma.member.findFirst({ where: { teamId: team.id, name: tasks.assignto } });
+
+    const bucket = process.env.AWS_BUCKET_NAME;
+    const uploadedUrls = [];
+
+    if (tasks.audio && tasks.audio.length > 0) {
+      for (let i = 0; i < tasks.audio.length; i++) {
+        const file = tasks.audio[i];
+        const s3Key = `tasks/${city}/${station}/${file.originalname}`;
+
+        // file.buffer comes from multer.memoryStorage
+        const url = await uploads(bucket, s3Key, file.buffer);
+        uploadedUrls.push(url);
+
+        // Optional: replace file object with S3 URL
+        tasks.audio[i] = url;
+      }
     }
-  });
-  await prisma.team.update({
-  where: { id: team.id },
-  data: {
-    totalassignedtask: { increment: 1 }
+
+    // Create task in Prisma
+    const task = await prisma.task.create({
+      data: {
+        instructions: tasks.instructions,
+        assignto: tasks.assignto,
+        audio: uploadedUrls, // store URLs in DB
+        teamId: team.id,
+        memberId: member.id,
+      },
+    });
+
+    // Update team daily stats
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    await prisma.teamDailyStats.upsert({
+      where: { teamId_date: { teamId: team.id, date: startOfDay } },
+      update: { assigned: { increment: 1 } },
+      create: { teamId: team.id, date: startOfDay, assigned: 1 },
+    });
+
+    const allTasks = await prisma.task.findMany({ include: { team: true, member: true } });
+    res.status(200).json(allTasks);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Server error");
   }
-  });
-
-  // 2️⃣ Find the member in that team
-  const member = await prisma.member.findFirst({
-    where: {
-      teamId: team.id,
-      name: tasks.assignto
-    }
-  });
-
-  // 3️⃣ Create the task for that member & team
-  const task = await prisma.task.create({
-    data: {
-      instructions:tasks.instructions,
-      assignto:tasks.assignto,
-      audio: Array.isArray(tasks.audio[0]) ? tasks.audio[0] : tasks.audio, 
-      teamId: team.id,
-      memberId: member.id,
-    }
-  });
-  const today = new Date();
-  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-
-  await prisma.teamDailyStats.upsert({
-    where: { teamId_date: { teamId: team.id, date: startOfDay } },
-    update: { assigned: { increment: 1 } },
-    create: { teamId: team.id, date: startOfDay, assigned: 1 }
-  });
-
-  if(task)
-  {
-     const tasks = await prisma.task.findMany({
-        include: {
-          team: true,   // fetch all team fields
-          member: true, // fetch all member fields
-        }
-      });
-
-     res.status(200).json(tasks);
-  }
-  }
-  catch(err)
-  {
-     console.log(err);
-  }
-
-})
+});
 
 app.post('/app/gettasks', async (req, res) => {
   const { city, station, leadName, teamName } = req.body;
@@ -828,40 +912,25 @@ app.get('/app/getlabel',async(req,res)=>{
 
 app.post("/app/minuteclip", async (req, res) => {
   try {
-    const { audio, city,date,station } = req.body; // send city from frontend too
-    console.log(audio);
-    
-    //  const inputFile=path.resolve(__dirname,audio);
-     const outputDir = path.resolve(__dirname, "clip");
+    const { audio, city, date, station } = req.body;
 
-    // Run your clip function (assuming it returns array of generated file paths)
-      const bucket = process.env.AWS_BUCKET_NAME;
-      const{key} =  extractBucketAndKey(audio);   // path inside S3
-      const outputFile = `${outputDir}/clip.mp3`; 
-      console.log("key:",key)
-      console.log(bucket,key,outputFile)
-      const clipFiles = await clipAudio(bucket,key,city,date,station, "clip");
-    // Upload each clip to S3
-      console.log(clipFiles);
-      const uploadedUrls = [];
+    const bucket = process.env.AWS_BUCKET_NAME;
+    const { key } = extractBucketAndKey(audio);
 
-    for (const file of clipFiles) {
-      const fileName = path.basename(file);
-      const s3Key = `clips/${city}/${date}/${fileName}`;
-      const url = await uploadFileToS3(bucket, s3Key, file);
-      uploadedUrls.push(url);
-    }
+    // clipAudio already uploads and returns S3 URLs
+    const uploadedUrls = await clipAudio(bucket, key, city, date, station, "clip");
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: "Clips created and uploaded successfully",
-      files: uploadedUrls 
+      files: uploadedUrls,
     });
   } catch (err) {
     console.error("❌ API Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 function extractBucketAndKey(s3Url) {
   const url = new URL(s3Url);
   const hostParts = url.hostname.split(".");
