@@ -15,12 +15,13 @@ const s3 = new S3Client({
 export  async function uploadFileToS3(bucket, key, filePath) {
    console.log(bucket);
    const normalizedPath = path.resolve(filePath);
-  const fileStream = fs.createReadStream(normalizedPath);
-
+   const fileStream = fs.createReadStream(normalizedPath);
+ const body = fs.existsSync(normalizedPath) ? fs.createReadStream(normalizedPath) : filePath;
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,
-    Body: fileStream,
+    // Body: fileStream || filePath,
+    Body: body,
     ContentType: "audio/mpeg", // for JSON you can use "application/json"
   });
 
