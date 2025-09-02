@@ -3,7 +3,7 @@ import { redis } from './client/RedisClient.js';
 import express from "express";
 import { execFile,exec } from 'child_process';
 import uploads from './Server/upload.js';
-
+import getPresignedUrl from './Server/signedUrl.js';
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cors from 'cors';
@@ -34,9 +34,11 @@ const __dirname = path.dirname(__filename);
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-
+const credentials = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CLOUD_CREDENTIALS, "base64").toString("utf8")
+);
 const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_CLOUD_CREDENTIALS, // path to JSON key
+  credentials, // path to JSON key
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -949,7 +951,9 @@ app.post('/app/savemetadata', async (req, res) => {
       return res.status(400).json({ success: false, message: "City, date, and channel are required" });
     }
 
-    console.log("Received metadata:", metadata);
+    console.log("📥 Received metadata:", metadata);
+    console.log("📝 Type of metadata:", typeof metadata);
+    console.log("🔑 Keys:", Object.keys(metadata));
 
     // --- 1. Find the city folder inside your personal Drive ---
     const topLevelFolderId = "1oz5sL1U0cg7TH2rRm6gkCePVML35Ut-z"; // Radio Metadata
@@ -957,7 +961,7 @@ app.post('/app/savemetadata', async (req, res) => {
       q: `'${topLevelFolderId}' in parents and name='${metadata.city}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: "files(id, name)",
     });
-
+     console.log(folderRes);
     if (folderRes.data.files.length === 0) {
       return res.status(400).json({ success: false, message: "City folder not found" });
     }
@@ -966,6 +970,8 @@ app.post('/app/savemetadata', async (req, res) => {
 
     // --- 2. Build sheet name dynamically (manually created sheet) ---
     const sheetName = `${metadata.date}_${metadata.channel}_${metadata.city}`;
+
+    console.log(sheetName);
 
     // --- 3. Find the existing sheet in the city folder ---
     const driveRes = await drive.files.list({
@@ -976,18 +982,28 @@ app.post('/app/savemetadata', async (req, res) => {
     if (driveRes.data.files.length === 0) {
       return res.status(400).json({ success: false, message: `Sheet '${sheetName}' not found in folder '${metadata.city}'` });
     }
-
+    
     const spreadsheetId = driveRes.data.files[0].id;
 
+      const row = [
+      metadata.city,
+      metadata.date,
+      metadata.channel,
+      metadata.program,
+      metadata.starttime,
+      metadata.endtime,
+      metadata.duration,
+      metadata.contentType
+    ];
     // --- 4. Append metadata row ---
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "Sheet1!A2", // append below existing data
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [Object.values(metadata)] },
+      requestBody: { values: [row] },
     });
-
+    
     res.json({
       success: true,
       message: "Metadata appended successfully",
@@ -1001,6 +1017,35 @@ app.post('/app/savemetadata', async (req, res) => {
   }
 });
 
+app.get("/app/download", async (req, res) => {
+  try {
+    let { key } = req.query;
+
+    if (!key) {
+      return res.status(400).json({ error: "File key is required" });
+    }
+
+    // If full URL is passed, strip domain part
+    if (key.startsWith("http")) {
+      const url = new URL(key);
+      key = decodeURIComponent(url.pathname.substring(1)); // 🔥 decode spaces
+    }
+     console.log(key);
+    // Await the presigned URL
+        const urlSigned = await getPresignedUrl( 
+        "radio-clip-studio-audio",  // bucket name
+        key,                        // object key
+        60 * 5                      // expiration in seconds
+      );
+
+    console.log("Signed URL:", urlSigned);
+    res.json({ url: urlSigned });
+
+  } catch (err) {
+    console.error("Error generating presigned URL:", err);
+    res.status(500).json({ error: "Failed to generate signed URL" });
+  }
+});
 
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
