@@ -23,7 +23,6 @@ export  async function uploadFileToS3(bucket, key, filePath) {
     // Body: fileStream || filePath,
     Body: body,
     ContentType: "audio/mpeg", // for JSON you can use "application/json"
-     ACL: 'public-read'
   });
 
   await s3.send(command);
