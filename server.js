@@ -20,11 +20,12 @@ import { uploadFileToS3 } from './Server/uploadFileToS3.js';
 import os from 'os';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { PassThrough } from "stream";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
 dotenv.config();
 const app=express();
 //  app.use(cors());
- app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+ app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true , methods: ["GET", "POST", "PUT", "DELETE"], allowedHeaders: ["Content-Type", "Authorization"]}));
  app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
@@ -913,22 +914,68 @@ app.get('/app/getlabel',async(req,res)=>{
 })
 
 app.post("/app/minuteclip", async (req, res) => {
-  try {
-    const { audio, city, date, station } = req.body;
+  // try {
+  //   const { audio, city, date, station } = req.body;
 
+  //   const bucket = process.env.AWS_BUCKET_NAME;
+  //   const { key } = extractBucketAndKey(audio);
+
+  //   // clipAudio already uploads and returns S3 URLs
+  //   const uploadedUrls = await clipAudio(bucket, key, city, date, station, "clip");
+
+  //   res.status(200).json({
+  //     success: true,
+  //     message: "Clips created and uploaded successfully",
+  //     files: uploadedUrls,
+  //   });
+  // } catch (err) {
+  //   console.error("❌ API Error:", err);
+  //   res.status(500).json({ success: false, error: err.message });
+  // }
+    try {
+    const { audio, city, date, station } = req.body;
     const bucket = process.env.AWS_BUCKET_NAME;
     const { key } = extractBucketAndKey(audio);
 
-    // clipAudio already uploads and returns S3 URLs
-    const uploadedUrls = await clipAudio(bucket, key, city, date, station, "clip");
+    console.log("📥 Received request:", { bucket, key, city, date, station });
 
-    res.status(200).json({
-      success: true,
-      message: "Clips created and uploaded successfully",
-      files: uploadedUrls,
-    });
-  } catch (err) {
-    console.error("❌ API Error:", err);
+    const lambda = new LambdaClient({ region: process.env.AWS_REGION });
+
+    const response = await lambda.send(
+      new InvokeCommand({
+        FunctionName: "Audio-Pro", // 👈 check exact name in AWS Lambda console
+        Payload: Buffer.from(
+          JSON.stringify({ bucket, key, city, date, station })
+        ),
+      })
+    );
+
+    console.log("📡 Raw Lambda response:", response);
+
+    // Some Lambdas return Buffer, some string, so decode carefully
+    const payloadString = new TextDecoder().decode(response.Payload);
+    console.log("📦 Lambda payload string:", payloadString);
+    let result;
+      try {
+        result = JSON.parse(payloadString);
+
+        // Parse body if it’s a JSON string
+        if (typeof result.body === "string") {
+          result.body = JSON.parse(result.body);
+        }
+      } catch (parseErr) {
+        console.error("❌ JSON parse error:", parseErr);
+        return res.status(500).json({ success: false, error: "Invalid Lambda response" });
+      }
+
+      if (result.statusCode === 200) {
+        return res.status(200).json({ success: true, ...result.body });
+      } else {
+        return res.status(500).json({ success: false, error: result.body?.error || "Lambda failed" });
+      }
+
+   } catch (err) {
+    console.error("❌ API Error in /app/minuteclip:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
