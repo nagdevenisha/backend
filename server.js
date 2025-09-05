@@ -1093,7 +1093,85 @@ app.get("/app/download", async (req, res) => {
     res.status(500).json({ error: "Failed to generate signed URL" });
   }
 });
+app.post("/add", async (req, res) => {
+  const { type, value } = req.query;
+  console.log(type,value);
+  if (!type || !value) return res.status(400).json({ error: "Missing type or value" });
 
+  const key = `${type}:list`;
+  const exists = await redis.lpos(key, value); // check if value exists
+  if (exists === null) {
+    await redis.rpush(key, value); // add new entry
+  }
+
+  res.json({ success: true, value });
+});
+
+// Fetch all for given type
+app.get("/suggest", async (req, res) => {
+  const { type } = req.query;
+  console.log(type)
+  if (!type || !["ads", "songs","programs","jingle"].includes(type)) {
+    return res.status(400).json({ error: "Invalid type" });
+  }
+
+  const key = `${type}:list`;
+  const items = await redis.lrange(key, 0, -1);
+
+  res.json(items);
+});
+
+// app.post("/app/setNewCity", async (req, res) => {
+//   try {
+//     const { city } = req.body;
+
+//     const find = await prisma.radioPerCity.findFirst({
+//       where: { city },
+//     });
+
+//     if (!find) {
+//       const response = await prisma.radioPerCity.create({
+//         data: { city: city },
+//       });
+//       return res.json({ msg: "City saved", response }); // return stops here
+//     }
+
+//     return res.json({ msg: "City Already Present" }); // return here too
+//   } catch (err) {
+//     console.log(err);
+//     return res.status(500).json({ msg: "City not saved", err });
+//   }
+// });
+
+app.post("/app/setNewStation", async (req, res) => {
+  try {
+    const { city, station } = req.body;
+
+    // check if SAME city+station already exists
+    const existing = await prisma.radioPerCity.findFirst({
+      where: {
+        city,
+        radio: station,
+      },
+    });
+
+    if (existing) {
+      return res.json({ msg: "This station already exists for the city" });
+    }
+
+    // ✅ save new row only if unique
+    const response = await prisma.radioPerCity.create({
+      data: { city, radio: station },
+    });
+
+    res.json({ msg: "Station saved", response });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Station not saved", err });
+  }
+});
+
+ 
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 
