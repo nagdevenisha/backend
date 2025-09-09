@@ -26,7 +26,7 @@ dotenv.config();
 const app=express();
 //  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true , methods: ["GET", "POST", "PUT", "DELETE"], allowedHeaders: ["Content-Type", "Authorization"]}));
- app.use(express.json());
+//  app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -1031,17 +1031,37 @@ app.post('/app/savemetadata', async (req, res) => {
     }
     
     const spreadsheetId = driveRes.data.files[0].id;
+let programData = "";
 
-      const row = [
-      metadata.city,
-      metadata.date,
-      metadata.channel,
-      metadata.program,
-      metadata.starttime,
-      metadata.endtime,
-      metadata.duration,
-      metadata.contentType
-    ];
+if (metadata.contentType === "Song" && metadata.program?.songs) {
+  const { title, artist, album, release, langguage } = metadata.program.songs;
+  programData = [title, artist, album, release, langguage].filter(Boolean).join(", ");
+}
+
+else if (metadata.contentType === "Advertisement" && metadata.program?.ads) {
+  const { brand, product, category, sector } = metadata.program.ads;
+  programData = [brand, product, category, sector].filter(Boolean).join(", ");
+}
+
+else if (metadata.contentType === "Jingle") {
+  programData = metadata.program?.jingle || "";
+}
+
+else if (metadata.contentType === "Program") {
+  programData = metadata.program?.program || "";
+}
+
+// Build row for Google Sheet
+const row = [
+  metadata.city,
+  metadata.date,
+  metadata.channel,
+  programData,   // ✅ flattened string
+  metadata.starttime,
+  metadata.endtime,
+  metadata.duration,
+  metadata.contentType
+];
     // --- 4. Append metadata row ---
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -1094,54 +1114,58 @@ app.get("/app/download", async (req, res) => {
   }
 });
 app.post("/add", async (req, res) => {
-  const { type, value } = req.query;
-  console.log(type,value);
-  if (!type || !value) return res.status(400).json({ error: "Missing type or value" });
+  // const { type, value } = req.query;
+  // console.log(type,value);
+  // if (!type || !value) return res.status(400).json({ error: "Missing type or value" });
 
-  const key = `${type}:list`;
-  const exists = await redis.lpos(key, value); // check if value exists
-  if (exists === null) {
-    await redis.rpush(key, value); // add new entry
+  // const key = `${type}:list`;
+  // const exists = await redis.lpos(key, value); // check if value exists
+  // if (exists === null) {
+  //   await redis.rpush(key, value); // add new entry
+  // }
+
+  // res.json({ success: true, value });
+     try {
+    const { type, value } = req.query; // type & value from query
+    if (!type || !value) {
+      return res.status(400).json({ error: "Type and value required" });
+    }
+
+    const key = `${type}:list`;
+
+    // Avoid duplicates
+    const exists = await redis.lpos(key, value);
+    if (exists === null) {
+      await redis.rpush(key, value);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error in /add:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  res.json({ success: true, value });
 });
 
 // Fetch all for given type
 app.get("/suggest", async (req, res) => {
-  const { type } = req.query;
-  console.log(type)
-  if (!type || !["ads", "songs","programs","jingle"].includes(type)) {
-    return res.status(400).json({ error: "Invalid type" });
+   try {
+    const { type } = req.query;
+    if (!type) {
+      return res.status(400).json({ error: "Type is required" });
+    }
+
+    // Redis key naming convention (e.g. songs:title, song:artist, ads:brand, etc.)
+    const key = `${type}:list`;
+
+    // Get all items
+    const values = await redis.lrange(key, 0, -1);
+
+    res.json(values);
+  } catch (err) {
+    console.error("Error in /suggest:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const key = `${type}:list`;
-  const items = await redis.lrange(key, 0, -1);
-
-  res.json(items);
 });
-
-// app.post("/app/setNewCity", async (req, res) => {
-//   try {
-//     const { city } = req.body;
-
-//     const find = await prisma.radioPerCity.findFirst({
-//       where: { city },
-//     });
-
-//     if (!find) {
-//       const response = await prisma.radioPerCity.create({
-//         data: { city: city },
-//       });
-//       return res.json({ msg: "City saved", response }); // return stops here
-//     }
-
-//     return res.json({ msg: "City Already Present" }); // return here too
-//   } catch (err) {
-//     console.log(err);
-//     return res.status(500).json({ msg: "City not saved", err });
-//   }
-// });
 
 app.post("/app/setNewStation", async (req, res) => {
   try {
