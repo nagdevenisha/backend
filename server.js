@@ -26,7 +26,7 @@ dotenv.config();
 const app=express();
 //  app.use(cors());
  app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true , methods: ["GET", "POST", "PUT", "DELETE"], allowedHeaders: ["Content-Type", "Authorization"]}));
-//  app.use(express.json());
+ app.use(express.json());
 //  const BASE_URL = "http://localhost:3001"; 
 const BASE_URL = "https://backend-urlk.onrender.com";
 const JWT_SECRET = process.env.JWT_SECRET;
