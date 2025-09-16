@@ -21,6 +21,7 @@ import os from 'os';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { PassThrough } from "stream";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import {deleteUser,updateUser,updateTask,labelleddata,labelldataByDate} from './serveiceLayer/service.js';
 
 dotenv.config();
 const app=express();
@@ -422,8 +423,16 @@ app.post("/app/tasks", uploadMiddleware.array("audio"), async (req, res) => {
         audio: uploadedUrls, // store URLs in DB
         teamId: team.id,
         memberId: member.id,
+        audioTasks: {
+          create: uploadedUrls.map((url) => ({
+            audioUrl: url,
+          })),
+        },
       },
-    });
+      include: {
+        audioTasks: true, // return audioTasks with task
+      },
+});
 
     // Update team daily stats
     const today = new Date();
@@ -434,7 +443,20 @@ app.post("/app/tasks", uploadMiddleware.array("audio"), async (req, res) => {
       create: { teamId: team.id, date: startOfDay, assigned: 1 },
     });
 
-    const allTasks = await prisma.task.findMany({ include: { team: true, member: true } });
+ const allTasks = await prisma.task.findMany({
+  where: {
+    team: {
+      city,       // 👈 filter using relation
+      station,
+      leadName,
+      teamName
+    }
+  },
+  include: {
+    team: true,
+    member: true
+  }
+});
     res.status(200).json(allTasks);
   } catch (err) {
     console.log(err);
@@ -786,7 +808,13 @@ app.get('/app/alltasks',async(req,res)=>{
             include: {
               team: true,
               member: true,
-            },
+            audioTasks: {
+            select: {
+            id: true,
+            audioUrl: true,
+            status: true,       
+          }}
+        }
           });
         if(team)
         {
@@ -914,24 +942,6 @@ app.get('/app/getlabel',async(req,res)=>{
 })
 
 app.post("/app/minuteclip", async (req, res) => {
-  // try {
-  //   const { audio, city, date, station } = req.body;
-
-  //   const bucket = process.env.AWS_BUCKET_NAME;
-  //   const { key } = extractBucketAndKey(audio);
-
-  //   // clipAudio already uploads and returns S3 URLs
-  //   const uploadedUrls = await clipAudio(bucket, key, city, date, station, "clip");
-
-  //   res.status(200).json({
-  //     success: true,
-  //     message: "Clips created and uploaded successfully",
-  //     files: uploadedUrls,
-  //   });
-  // } catch (err) {
-  //   console.error("❌ API Error:", err);
-  //   res.status(500).json({ success: false, error: err.message });
-  // }
     try {
     const { audio, city, date, station } = req.body;
     const bucket = process.env.AWS_BUCKET_NAME;
@@ -993,7 +1003,7 @@ function extractBucketAndKey(s3Url) {
 
 app.post('/app/savemetadata', async (req, res) => {
   try {
-    const { metadata } = req.body;
+    const { metadata,audioId } = req.body;
     if (!metadata || !metadata.city || !metadata.date || !metadata.channel) {
       return res.status(400).json({ success: false, message: "City, date, and channel are required" });
     }
@@ -1001,6 +1011,93 @@ app.post('/app/savemetadata', async (req, res) => {
     console.log("📥 Received metadata:", metadata);
     console.log("📝 Type of metadata:", typeof metadata);
     console.log("🔑 Keys:", Object.keys(metadata));
+
+
+  let data = {
+  city: metadata.city,
+  date: metadata.date,
+  channel: metadata.channel,
+  startTime: metadata.starttime || null,
+  endTime: metadata.endtime || null,
+  duration: metadata.duration || null,
+  contentType: metadata.contentType,
+  audioTask: { connect: { id: audioId } }
+};
+
+// Clean according to type
+switch (metadata.contentType) {
+  case "Song":
+    Object.assign(data, {
+      title: metadata.program?.songs?.title || null,
+      artist: metadata.program?.songs?.artist || null,
+      album: metadata.program?.songs?.album || null,
+      releaseYear: metadata.program?.songs?.release || null,
+      language: metadata.program?.songs?.language || null,
+
+      brand: null, product: null, category: null, sector: null, adType: null,
+      programTitle: null, programGenre: null, seasonNumber: null, episodeNumber: null, programLang: null,
+      sportsTitle: null, sportsName: null, sportsCategory: null, sportsLang: null,
+      errorType: null
+    });
+    break;
+
+  case "Advertisement":
+    Object.assign(data, {
+      brand: metadata.program?.ads?.brand || null,
+      product: metadata.program?.ads?.product || null,
+      category: metadata.program?.ads?.category || null,
+      sector: metadata.program?.ads?.sector || null,
+      adType: metadata.program?.ads?.type || null,
+
+      title: null, artist: null, album: null, releaseYear: null, language: null,
+      programTitle: null, programGenre: null, seasonNumber: null, episodeNumber: null, programLang: null,
+      sportsTitle: null, sportsName: null, sportsCategory: null, sportsLang: null,
+      errorType: null
+    });
+    break;
+
+  case "Program":
+    Object.assign(data, {
+      programTitle: metadata.program?.program?.title || null,
+      programGenre: metadata.program?.program?.genre || null,
+      seasonNumber: metadata.program?.program?.season || null,
+      episodeNumber: metadata.program?.program?.episode || null,
+      programLang: metadata.program?.program?.language || null,
+
+      title: null, artist: null, album: null, releaseYear: null, language: null,
+      brand: null, product: null, category: null, sector: null, adType: null,
+      sportsTitle: null, sportsName: null, sportsCategory: null, sportsLang: null,
+      errorType: null
+    });
+    break;
+
+  case "Sports":
+    Object.assign(data, {
+      sportsTitle: metadata.program?.sports?.title || null,
+      sportsName: metadata.program?.sports?.name || null,
+      sportsCategory: metadata.program?.sports?.category || null,
+      sportsLang: metadata.program?.sports?.language || null,
+
+      title: null, artist: null, album: null, releaseYear: null, language: null,
+      brand: null, product: null, category: null, sector: null, adType: null,
+      programTitle: null, programGenre: null, seasonNumber: null, episodeNumber: null, programLang: null,
+      errorType: null
+    });
+    break;
+
+  case "Error":
+    Object.assign(data, {
+      errorType: metadata.program?.error || null,
+
+      title: null, artist: null, album: null, releaseYear: null, language: null,
+      brand: null, product: null, category: null, sector: null, adType: null,
+      programTitle: null, programGenre: null, seasonNumber: null, episodeNumber: null, programLang: null,
+      sportsTitle: null, sportsName: null, sportsCategory: null, sportsLang: null,
+    });
+    break;
+}
+
+const savedMeta = await prisma.audioData.create({ data });
 
     // --- 1. Find the city folder inside your personal Drive ---
     const topLevelFolderId = "1oz5sL1U0cg7TH2rRm6gkCePVML35Ut-z"; // Radio Metadata
@@ -1031,46 +1128,73 @@ app.post('/app/savemetadata', async (req, res) => {
     }
     
     const spreadsheetId = driveRes.data.files[0].id;
-let programData = "";
+// --- Common fields (always fixed order) ---
+let row = [
+  metadata.city || "",
+  metadata.date || "",
+  metadata.channel || "",
+  metadata.starttime || "",
+  metadata.endtime || "",
+  metadata.duration || "",
+  metadata.contentType || ""
+];
+
+// --- Song specific ---
+let title = "", artist = "", album = "", release = "", language = "";
+let brand = "", product = "", category = "", sector = "",type="";
+let jingle = "", program = "", programData = "";
+let titles="",episode="",season="",genre="",lang="";
+let label="",langs="",categories="",types="" ,errors=""
 
 if (metadata.contentType === "Song" && metadata.program?.songs) {
-  const { title, artist, album, release, langguage } = metadata.program.songs;
-  programData = [title, artist, album, release, langguage].filter(Boolean).join(", ");
+  ({ title = "", artist = "", album = "", release = "", language = "" } = metadata.program.songs);
+  programData = [title, artist, album, release, language].filter(Boolean).join(", ");
 }
 
 else if (metadata.contentType === "Advertisement" && metadata.program?.ads) {
-  const { brand, product, category, sector } = metadata.program.ads;
-  programData = [brand, product, category, sector].filter(Boolean).join(", ");
+  ({ brand = "", product = "", category = "", sector = "" ,type=""} = metadata.program.ads);
+  programData = [brand, product, category, sector,type].filter(Boolean).join(", ");
 }
 
 else if (metadata.contentType === "Jingle") {
-  programData = metadata.program?.jingle || "";
+  jingle = metadata.program?.jingle || "";
+  programData = jingle;
 }
 
-else if (metadata.contentType === "Program") {
-  programData = metadata.program?.program || "";
-}
+else if (metadata.contentType === "Program"  && metadata.program?.program) {
+  let {title,language}=metadata.program.program;
+  lang=language; titles=title;
+({episode="",season="",genre="" } = metadata.program.program);
+  programData = [title,season,episode,genre,language].filter(Boolean).join(", ");
+}	
+else if (metadata.contentType === "Sports"  && metadata.program?.sports) {
+  let {title,language,category,type}=metadata.program.sports;
+  langs=language; label=title;categories=category,types=type;
+  programData = [title,category,type,langs].filter(Boolean).join(", ");
+}	
+else if (metadata.contentType === "Error") {
+  let {error}=metadata.program;
+  errors=error;
+}	
 
-// Build row for Google Sheet
-const row = [
-  metadata.city,
-  metadata.date,
-  metadata.channel,
-  programData,   // ✅ flattened string
-  metadata.starttime,
-  metadata.endtime,
-  metadata.duration,
-  metadata.contentType
-];
-    // --- 4. Append metadata row ---
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: "Sheet1!A2", // append below existing data
-      valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [row] },
-    });
-    
+row.push(
+  programData,  
+  title, artist, album, release, language,   // Song
+  brand, product, category, sector,type,
+  label,  categories,types,langs,      
+  titles,genre,season,episode,
+  errors
+
+);
+
+// --- Save to Google Sheet ---
+await sheets.spreadsheets.values.append({
+  spreadsheetId,
+  range: "Sheet1!A2",
+  valueInputOption: "RAW",
+  insertDataOption: "INSERT_ROWS",
+  requestBody: { values: [row] },
+});
     res.json({
       success: true,
       message: "Metadata appended successfully",
@@ -1114,17 +1238,6 @@ app.get("/app/download", async (req, res) => {
   }
 });
 app.post("/add", async (req, res) => {
-  // const { type, value } = req.query;
-  // console.log(type,value);
-  // if (!type || !value) return res.status(400).json({ error: "Missing type or value" });
-
-  // const key = `${type}:list`;
-  // const exists = await redis.lpos(key, value); // check if value exists
-  // if (exists === null) {
-  //   await redis.rpush(key, value); // add new entry
-  // }
-
-  // res.json({ success: true, value });
      try {
     const { type, value } = req.query; // type & value from query
     if (!type || !value) {
@@ -1195,7 +1308,90 @@ app.post("/app/setNewStation", async (req, res) => {
   }
 });
 
+
+app.get('/app/findUsers',async(req,res)=>{
+    try{
+          const users=await prisma.user.findMany();
+          if(users)
+          {
+             return res.json({users});
+          }
+          
+    }
+    catch(err)
+    {
+       console.log(err);
+    }
+})
  
+app.get('/app/deleteUser',(req,res)=>{
+  
+      const{username}=req.query;
+      const flag=deleteUser(username);
+      if (flag) {
+      return res.status(200).json({ message: "User deleted successfully" });
+    } else {
+      return res.status(404).json({ message: "User not found" });
+    }
+})
+
+app.post("/app/updateUser", async (req, res) => {
+  const { username, role } = req.body;
+  try {
+    const updatedUser = await updateUser(username, role);
+    res.status(200).json(updatedUser); // return updated record
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update user" });
+  }
+});
+
+
+app.get("/app/finalSubmit",async(req,res)=>{
+    const{id}=req.query;
+    console.log(id);
+    try {
+    const update = await updateTask(id);
+    console.log(update);
+    res.status(200).json(update); // return updated record
+  } catch (err) {
+    res.status(500).json({ error: "Failed to Submit" });
+  }
+    
+})
+
+app.get("/app/findData",async(req,res)=>{
+   try{
+          const data=await labelleddata();
+          console.log(data);
+          if(data)
+          {
+             res.json(data);
+          }
+   }
+   catch(err)
+   {
+     console.log(err);
+     res.status(500).json({msg:"Error getting labels"});
+   }
+})
+
+
+app.get("/app/labelBydate",async(req,res)=>{
+   try{
+         const{date}=req.query;
+         const label=await labelldataByDate(date);
+         if(label)
+         {
+           res.json(label);
+         }
+   }
+   catch(err)
+   {
+     console.log(err);
+      res.status(500).json({msg:"Error getting labels by date"});
+   }
+})
+
 const port=3001;
 app.listen(port,()=>console.log(`Backend running on ${port}`));
 

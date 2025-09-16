@@ -1,12 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  // output   = "../generated/prisma"
 }
 
 datasource db {
@@ -16,17 +9,18 @@ datasource db {
 
 model User {
   id        String   @id @default(uuid())
-  fullname  String
   username  String   @unique
   password  String
   role      String
   createdAt DateTime @default(now())
+  fullname  String
 }
 
 model RadioPerCity {
-  id    Int    @id @default(autoincrement())
-  city  String ?
-  radio String ?
+  id    Int     @id @default(autoincrement())
+  city  String?
+  radio String?
+
   @@unique([city, radio])
 }
 
@@ -54,27 +48,74 @@ model Member {
 }
 
 model Task {
-  id           Int      @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   assignto     String
-  audio        String[]
   instructions String?
-  status       String   @default("pending") // could be pending, completed, etc.
-  createdAt    DateTime @default(now())
+  status       String      @default("pending")
+  createdAt    DateTime    @default(now())
   teamId       Int
-  team         Team     @relation(fields: [teamId], references: [id])
   memberId     Int
-  member       Member   @relation(fields: [memberId], references: [id])
+  audio        String[]
+  audioTasks   AudioTask[]
+  member       Member      @relation(fields: [memberId], references: [id])
+  team         Team        @relation(fields: [teamId], references: [id])
 }
+
+model AudioTask {
+  id       Int    @id @default(autoincrement())
+  taskId   Int
+  audioUrl String
+  status   String @default("pending")
+  completionDate DateTime ? 
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  metadata AudioData[]
+}
+
+
+model AudioData {
+  id             Int        @id @default(autoincrement())
+  audioTaskId    Int?
+  city           String
+  date           String
+  channel        String
+  startTime      String?
+  endTime        String?
+  duration       String?
+  contentType    String
+  title          String?
+  artist         String?
+  album          String?
+  releaseYear    String?
+  language       String?
+  brand          String?
+  product        String?
+  category       String?
+  sector         String?
+  adType         String?
+  programTitle   String?
+  programGenre   String?
+  seasonNumber   String?
+  episodeNumber  String?
+  programLang    String?
+  sportsTitle    String?
+  sportsName     String?
+  sportsCategory String?
+  sportsLang     String?
+  errorType      String?
+  audioTask      AudioTask? @relation(fields: [audioTaskId], references: [id], onDelete: Cascade)
+}
+
 
 model TeamDailyStats {
   id       Int      @id @default(autoincrement())
-  team     Team     @relation(fields: [teamId], references: [id])
   teamId   Int
   date     DateTime
   assigned Int      @default(0)
+  team     Team     @relation(fields: [teamId], references: [id])
 
   @@unique([teamId, date])
 }
+
 model AudioFingerprint {
   id          Int      @id @default(autoincrement())
   fileName    String
@@ -83,31 +124,32 @@ model AudioFingerprint {
   fingerprint String
   createdAt   DateTime @default(now())
 }
+
 model Recording {
   id          Int     @id @default(autoincrement())
-  fileName    String   // camelCase
+  fileName    String
   filePath    String
   duration    Int
-  jsonPath    String? 
   fingerprint String
-}
-model MatchResult {
-  id         Int      @id @default(autoincrement())
-  recordingId Int?    // optional link to uploaded recording
-  jsonData   Json
-  createdAt  DateTime @default(now())
+  jsonPath    String?
 }
 
+model MatchResult {
+  id          Int      @id @default(autoincrement())
+  recordingId Int?
+  jsonData    Json
+  createdAt   DateTime @default(now())
+}
 
 model AudioItem {
-  id        String   @id         // ITEM-45D7FD2D
-  audio     String ?                // audio URL
-  channel   String 
-  date      DateTime 
-  start     String                     // keep as string "HH:mm:ss"
-  end       String 
-  program   String 
-  region    String 
+  id        String   @id
+  audio     String?
+  channel   String
+  date      DateTime
+  start     String
+  end       String
+  program   String
+  region    String
   type      String
   createdAt DateTime @default(now())
 }
