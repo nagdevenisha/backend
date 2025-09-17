@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-  "postinstall": "prisma generate",
-  "migrate": "prisma migrate deploy",
-  "start": "node server.js"
-   },
+    "postinstall": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "start": "node server.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -17,7 +17,7 @@
     "@aws-sdk/s3-request-presigner": "^3.879.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@prisma/client": "^6.13.0",
+    "@prisma/client": "^6.16.1",
     "bcryptjs": "^3.0.2",
     "child_process": "^1.0.2",
     "cors": "^2.8.5",
@@ -39,6 +39,6 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.10",
-    "prisma": "^6.13.0"
+    "prisma": "^6.16.1"
   }
 }
